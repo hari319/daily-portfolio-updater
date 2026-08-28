@@ -5,11 +5,16 @@ flags, at a glance, every EMA the current price has fallen below.
 
 The app opens as a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/))
 rather than a browser tab. For each ticker it computes the **9, 21, 50, 100 and 200 period EMA** on
-both the **daily** and the **weekly** timeframe (10 values per ticker). Each EMA column shows daily
-(**D:**) on top and weekly (**W:**) below. An EMA value is displayed **only when the current price is
-below it on that timeframe**, and it is rendered in **red**. If the price is above an EMA on a
-timeframe, that row stays blank, so a single glance shows exactly which averages have been lost and
-on which timeframe.
+both the **daily** and the **weekly** timeframe (10 values per ticker).
+
+* **Signal Column**: Shows **`SELL`** (in red) when the price is below the daily 200 EMA, and **`HOLD`** (in green) otherwise.
+* **Priority Sorting**: Tickers below the daily 200 EMA appear first (highest priority), followed by 100, 50, 21, and 9 EMA. Within the same priority level, tickers are sorted **alphabetically**.
+* **Stacked EMA Values**: Each EMA column shows daily (**D:**) on top and weekly (**W:**) below. An EMA value is displayed **only when the current price is below it on that timeframe**, rendered in **red**. If the price is above an EMA, the row stays blank.
+* **N/A for Missing Data**: If a specific EMA lacks sufficient history (e.g. 200-week on a recent listing), it shows `N/A` in muted grey while other available EMAs continue to display normally.
+* **NSE/BSE Auto-Switch**: If a ticker on one exchange has thin history (< 400 daily bars), the app automatically checks the alternate exchange (`.NS` ↔ `.BO`) and uses whichever has more history.
+* **Stock Company Names**: The company name is fetched from Yahoo Finance and displayed directly under each ticker link.
+* **Collapsible Tables**: Each portfolio table has a compact toggle button in its header to collapse or expand the table.
+* **Weekday Schedule & Top-Level Popup**: Scheduled refreshes run twice daily on **weekdays (Monday to Friday)**, popping up on top of all open windows as a reminder.
 
 The app shows **live data only** — current price and current EMAs. There is deliberately no
 historical / past-day browsing.
@@ -180,21 +185,9 @@ The two run times (default **09:30** and **11:30**) live in `config/settings.jso
 "schedule": { "run_times": ["09:30", "11:30"], "timezone": "Asia/Kolkata", "task_name": "StockMonitor-DailyUpdate" }
 ```
 
-Set them in the **Scheduled run times** panel of the UI and click **Save times**. The UI writes to
-that exact file — the same file `scripts/run_scheduled.ps1` and `scripts/register_task.ps1` read — so
-no code change is needed. Times are validated as 24-hour `HH:MM`; exactly two are required.
-
-Because Windows Task Scheduler stores its own copy of the trigger times, the new times reach it in
-one of two ways:
-
-1. **Automatically** — after every run, `run_scheduled.ps1` calls `register_task.ps1 -Sync`, which
-   compares the task's triggers with `config/settings.json` and updates them if they differ.
-   (So a change made today is picked up at the next existing run and applies from then on.)
-2. **Immediately** — run it yourself:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
-   ```
+Set them in the **Scheduled run times** panel of the UI and click **Save times**. The app
+**automatically syncs the new times with Windows Task Scheduler immediately** — no manual script
+execution required. Times are validated as 24-hour `HH:MM`; exactly two are required.
 
 ## Windows Task Scheduler setup
 
@@ -205,10 +198,10 @@ cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
 ```
 
-This reads `config/settings.json` and registers a task (default name
-`StockMonitor-DailyUpdate`) with one **daily trigger per configured time**, running
-`powershell.exe -File scripts\run_scheduled.ps1` with the project folder as its working directory.
-Useful switches: `-Sync` (only update when the times changed), `-Unregister` (remove the task),
+This reads `config/settings.json` and registers a task (default name `StockMonitor-DailyUpdate`)
+with **weekly triggers for Monday through Friday (weekdays only)** at each configured time,
+running `powershell.exe -File scripts\run_scheduled.ps1` in the active user session.
+Useful switches: `-Sync` (only update when times changed), `-Unregister` (remove the task),
 `-TaskName <name>`.
 
 **Manual (Task Scheduler GUI)** — if you prefer to create it by hand:
@@ -216,8 +209,8 @@ Useful switches: `-Sync` (only update when the times changed), `-Unregister` (re
 | Setting | Value |
 | --- | --- |
 | General → Name | `StockMonitor-DailyUpdate` |
-| General → Run whether user is logged on or not | optional |
-| Triggers | Daily at `09:30`, and a second Daily trigger at `11:30` |
+| General → Run only when user is logged on | Selected (required for interactive window popup) |
+| Triggers | Weekly on **Mon, Tue, Wed, Thu, Fri** at `09:30`, and second trigger at `11:30` |
 | Action → Program/script | `powershell.exe` |
 | Action → Add arguments | `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\...\Daily Updater\scripts\run_scheduled.ps1"` |
 | Action → Start in | `C:\...\Daily Updater` |
@@ -229,12 +222,12 @@ Useful switches: `-Sync` (only update when the times changed), `-Unregister` (re
 **What a run does:**
 
 1. Locates the interpreter (`.venv\Scripts\python.exe`, then `venv\`, then `python.exe` on `PATH`).
-2. Runs `scheduled_run.py`, which consumes the queue of newly added tickers, fetches every ticker in
-   both portfolios, and rewrites `data/snapshot.json` (the file the Flask app reads).
+2. Runs `scheduled_run.py`, which checks the weekday guard, consumes queued additions, fetches every
+   ticker in both portfolios, computes EMAs, applies priority sorting, and rewrites `data/snapshot.json`.
 3. Bumps `data/status.json` so any open desktop window refreshes itself via SSE.
-4. **Pops up a reminder window** — on success, launches `show_window.py` which opens a desktop
-   window showing the updated data. If a window is already open, this step is skipped and SSE
-   delivers the update silently.
+4. **Pops up a reminder window on top** — on success, launches `show_window.py` which brings the app
+   window on top of all currently running applications so you don't miss the update. If the window
+   is already open, it is restored and brought to the front.
 5. Re-syncs the task triggers with `config/settings.json`.
 6. Logs the outcome to `logs/scheduler.log` (plus a runner transcript in
    `logs/scheduled_run_console.log`).
@@ -331,20 +324,36 @@ stays in sync.
 * The current price is the live quote when available, otherwise the most recent close (noted in the
   row's tooltip). When a live quote exists, the forming daily candle's close is updated with it so
   the intraday EMA matches what a chart shows.
+* **Signal Logic**:
+  * **`SELL`** (red text): Current price is **below** the daily 200 EMA.
+  * **`HOLD`** (green text): Current price is **above** the daily 200 EMA (or 200 EMA data is not available).
+* **Priority Sorting**:
+  * Tickers are sorted by the highest daily EMA breached:
+    1. **Priority 0 (Highest)**: Price below daily **200** EMA
+    2. **Priority 1**: Price below daily **100** EMA
+    3. **Priority 2**: Price below daily **50** EMA
+    4. **Priority 3**: Price below daily **21** EMA
+    5. **Priority 4**: Price below daily **9** EMA
+    6. **Priority 5 (Lowest)**: Price above all daily EMAs
+  * Tickers sharing the same priority level are sorted **alphabetically**.
 * **Display rule** per EMA and timeframe:
 
   | Condition | Cell content |
   | --- | --- |
   | price **below** the EMA | **D:** or **W:** label followed by the value, in **red** |
   | price **above** the EMA | blank (the **D:** / **W:** label is still shown for alignment) |
+  | data **unavailable** | **D:** or **W:** followed by **`N/A`** in muted grey |
 
   Each EMA column stacks the daily value on top (**D:**) and the weekly value below (**W:**).
   Example: if CARTRADE is below its daily 9 EMA but above its weekly 9 EMA, the "9 EMA" cell shows
   `D: 245.30` in red on the first line, with the second line (`W:`) blank.
-* **Data sufficiency** is checked before every value. With fewer bars than the EMA period (common for
-  the 200-week EMA on a recently listed stock) the value is omitted and the reason is logged. With
-  fewer than twice the period, the value is shown but the row is marked with an amber `!` whose
-  tooltip explains that it was computed on limited history.
+* **N/A for Missing Data**: If an individual EMA cannot be computed due to insufficient historical bars
+  (e.g., 200-week EMA on a stock listed 1 year ago), that specific timeframe renders as `N/A` in muted grey.
+  All other EMAs for that stock continue to compute and display normally without throwing warning flags.
+* **NSE / BSE Auto-Switch**: If a ticker on its primary exchange has thin historical data (< 400 daily bars,
+  which is ~200 EMA × 2), the system automatically attempts to fetch history from the alternate exchange
+  (`.NS` ↔ `.BO`). If the alternate exchange provides more bars, it is used automatically to compute the EMAs
+  accurately.
 
 ## Error handling and logging
 
