@@ -1,0 +1,241 @@
+"""Orchestration layer: fetch -> compute EMAs -> snapshot -> publish status."""
+
+from __future__ import annotations
+
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from typing import Any
+
+import pandas as pd
+
+from . import status as status_store
+from .config_manager import load_settings
+from .data_fetcher import get_ticker_data
+from .ema import build_ema_matrix
+from .errors import DataFetchError
+from .jsonstore import read_json, write_json
+from .paths import SNAPSHOT_FILE
+from .portfolio import (
+    PORTFOLIO_NAMES,
+    display_name,
+    load_portfolios,
+    tradingview_url,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def empty_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
+    settings = settings or load_settings()
+    return {
+        "generated_at": None,
+        "source": None,
+        "ema_periods": list(settings["data"]["ema_periods"]),
+        "portfolios": {name: {"rows": []} for name in PORTFOLIO_NAMES},
+        "stats": {"total": 0, "ok": 0, "failed": 0},
+        "errors": [],
+    }
+
+
+def load_snapshot() -> dict[str, Any]:
+    """Return the last persisted snapshot, or an empty one."""
+    snapshot = read_json(SNAPSHOT_FILE, default=None)
+    if not isinstance(snapshot, dict) or "portfolios" not in snapshot:
+        return empty_snapshot()
+    for name in PORTFOLIO_NAMES:
+        snapshot["portfolios"].setdefault(name, {"rows": []})
+    snapshot.setdefault("errors", [])
+    snapshot.setdefault("stats", {"total": 0, "ok": 0, "failed": 0})
+    return snapshot
+
+
+def save_snapshot(snapshot: dict[str, Any]) -> None:
+    write_json(SNAPSHOT_FILE, snapshot)
+
+
+def build_row(symbol: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fetch one ticker and build its table row. Never raises."""
+    settings = settings or load_settings()
+    data_cfg = settings["data"]
+    decimals = int(settings["ui"].get("price_decimals", 2))
+
+    row: dict[str, Any] = {
+        "symbol": symbol,
+        "display": display_name(symbol),
+        "name": "",
+        "url": tradingview_url(symbol),
+        "price": None,
+        "price_display": "",
+        "signal": "Hold",
+        "currency": "INR",
+        "as_of": None,
+        "error": None,
+        "notes": [],
+        "emas": {str(period): _blank_cell() for period in data_cfg["ema_periods"]},
+    }
+
+    try:
+        data = get_ticker_data(
+            symbol,
+            period=str(data_cfg.get("history_period", "10y")),
+            retries=int(data_cfg.get("retries", 2)),
+            backoff_seconds=float(data_cfg.get("retry_backoff_seconds", 1.5)),
+        )
+    except DataFetchError as exc:
+        logger.error("Skipping %s - %s", symbol, exc.message)
+        row["error"] = exc.message
+        return row
+    except Exception as exc:  # defensive: never let one ticker kill the run
+        logger.exception("Unexpected error while processing %s", symbol)
+        row["error"] = f"Unexpected error: {type(exc).__name__}: {exc}"
+        return row
+
+    weekly_close = (
+        data.weekly["Close"] if "Close" in getattr(data.weekly, "columns", []) else pd.Series(dtype="float64")
+    )
+    matrix, notes = build_ema_matrix(
+        symbol=symbol,
+        price=data.price,
+        daily_close=data.daily["Close"],
+        weekly_close=weekly_close,
+        periods=data_cfg["ema_periods"],
+        decimals=decimals,
+    )
+
+    # Signal: "Sell" when price is below the daily 200 EMA, "Hold" otherwise.
+    ema200_cell = matrix.get("200", {}).get("daily", {})
+    signal = "Sell" if ema200_cell.get("below") else "Hold"
+
+    row.update(
+        {
+            "price": round(data.price, decimals) if data.price is not None else None,
+            "price_display": f"{data.price:,.{decimals}f}" if data.price is not None else "-",
+            "name": data.name,
+            "signal": signal,
+            "currency": data.currency,
+            "as_of": data.as_of,
+            "emas": matrix,
+            "notes": data.notes + notes,
+        }
+    )
+    return row
+
+
+def _blank_cell() -> dict[str, Any]:
+    blank = {"value": None, "below": False, "display": "N/A", "available": False}
+    return {"daily": dict(blank), "weekly": dict(blank)}
+
+
+# EMA periods ordered from highest priority to lowest.  A ticker below the
+# daily 200 EMA sorts before one below only the daily 9 EMA.
+_PRIORITY_EMAS = [200, 100, 50, 21, 9]
+
+
+def _ema_sort_key(row: dict[str, Any]) -> tuple[int, str]:
+    """Return ``(priority, display_name)`` for sorting rows.
+
+    Priority 0 = below daily 200 EMA (highest), …, 4 = below daily 9 only,
+    5 = above all daily EMAs.  Ties broken alphabetically.
+    """
+    emas = row.get("emas", {})
+    for idx, period in enumerate(_PRIORITY_EMAS):
+        cell = emas.get(str(period), {})
+        if cell.get("daily", {}).get("below"):
+            return (idx, row.get("display", row.get("symbol", "")))
+    return (len(_PRIORITY_EMAS), row.get("display", row.get("symbol", "")))
+
+
+def refresh_portfolios(
+    source: str = "manual",
+    portfolios: dict[str, list[str]] | None = None,
+    publish: bool = True,
+) -> dict[str, Any]:
+    """Refresh every ticker in both portfolios and persist the snapshot."""
+    settings = load_settings()
+    portfolios = portfolios or load_portfolios()
+    max_workers = max(1, int(settings["data"].get("max_workers", 4)))
+
+    symbols = sorted({symbol for tickers in portfolios.values() for symbol in tickers})
+    logger.info("Refreshing %s unique ticker(s) with %s worker(s)", len(symbols), max_workers)
+
+    rows_by_symbol: dict[str, dict[str, Any]] = {}
+    if symbols:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for row in pool.map(lambda symbol: build_row(symbol, settings), symbols):
+                rows_by_symbol[row["symbol"]] = row
+
+    snapshot = empty_snapshot(settings)
+    snapshot["generated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    snapshot["source"] = source
+
+    errors: list[dict[str, str]] = []
+    ok_count = 0
+    for name in PORTFOLIO_NAMES:
+        rows = [rows_by_symbol[symbol] for symbol in portfolios.get(name, []) if symbol in rows_by_symbol]
+        rows.sort(key=_ema_sort_key)
+        snapshot["portfolios"][name] = {"rows": rows}
+    for symbol, row in rows_by_symbol.items():
+        if row["error"]:
+            errors.append({"symbol": symbol, "message": row["error"]})
+        else:
+            ok_count += 1
+
+    snapshot["errors"] = errors
+    snapshot["stats"] = {"total": len(symbols), "ok": ok_count, "failed": len(errors)}
+    save_snapshot(snapshot)
+
+    if publish:
+        status_store.bump(
+            source=source,
+            message=f"{ok_count}/{len(symbols)} ticker(s) refreshed successfully.",
+            summary=snapshot["stats"],
+        )
+
+    if errors:
+        logger.warning("Refresh finished with %s failure(s): %s", len(errors), ", ".join(e["symbol"] for e in errors))
+    else:
+        logger.info("Refresh finished successfully for %s ticker(s)", len(symbols))
+    return snapshot
+
+
+def upsert_row(portfolio_name: str, row: dict[str, Any], source: str = "ticker-added") -> dict[str, Any]:
+    """Insert/replace a single row in the stored snapshot and publish it."""
+    snapshot = load_snapshot()
+    bucket = snapshot["portfolios"].setdefault(portfolio_name, {"rows": []})
+    rows = [existing for existing in bucket["rows"] if existing.get("symbol") != row["symbol"]]
+    rows.append(row)
+    rows.sort(key=_ema_sort_key)
+    bucket["rows"] = rows
+    snapshot["generated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    snapshot["source"] = source
+    _recalculate_stats(snapshot)
+    save_snapshot(snapshot)
+    status_store.bump(source=source, message=f"{row['symbol']} added to {portfolio_name}.", summary=snapshot["stats"])
+    return snapshot
+
+
+def drop_row(portfolio_name: str, symbol: str, source: str = "ticker-removed") -> dict[str, Any]:
+    snapshot = load_snapshot()
+    bucket = snapshot["portfolios"].setdefault(portfolio_name, {"rows": []})
+    bucket["rows"] = [row for row in bucket["rows"] if row.get("symbol") != symbol]
+    snapshot["generated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    snapshot["source"] = source
+    _recalculate_stats(snapshot)
+    save_snapshot(snapshot)
+    status_store.bump(source=source, message=f"{symbol} removed from {portfolio_name}.", summary=snapshot["stats"])
+    return snapshot
+
+
+def _recalculate_stats(snapshot: dict[str, Any]) -> None:
+    seen: dict[str, dict[str, Any]] = {}
+    for bucket in snapshot["portfolios"].values():
+        for row in bucket.get("rows", []):
+            seen[row["symbol"]] = row
+    errors = [
+        {"symbol": symbol, "message": row["error"]}
+        for symbol, row in seen.items()
+        if row.get("error")
+    ]
+    snapshot["errors"] = errors
+    snapshot["stats"] = {"total": len(seen), "ok": len(seen) - len(errors), "failed": len(errors)}

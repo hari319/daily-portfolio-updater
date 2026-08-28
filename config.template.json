@@ -1,0 +1,19 @@
+{
+  "schedule": {
+    "run_times": ["09:30", "11:30"],
+    "timezone": "Asia/Kolkata",
+    "task_name": "StockMonitor-DailyUpdate"
+  },
+  "data": {
+    "default_exchange_suffix": ".NS",
+    "history_period": "10y",
+    "ema_periods": [9, 21, 50, 100, 200],
+    "max_workers": 4,
+    "retries": 2,
+    "retry_backoff_seconds": 1.5
+  },
+  "ui": {
+    "status_poll_seconds": 5,
+    "price_decimals": 2
+  }
+}

@@ -1,0 +1,433 @@
+# Portfolio EMA Monitor (BAPA &amp; MADI)
+
+A local desktop application that tracks two NSE/BSE stock portfolios — **BAPA** and **MADI** — and
+flags, at a glance, every EMA the current price has fallen below.
+
+The app opens as a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/))
+rather than a browser tab. For each ticker it computes the **9, 21, 50, 100 and 200 period EMA** on
+both the **daily** and the **weekly** timeframe (10 values per ticker). Each EMA column shows daily
+(**D:**) on top and weekly (**W:**) below. An EMA value is displayed **only when the current price is
+below it on that timeframe**, and it is rendered in **red**. If the price is above an EMA on a
+timeframe, that row stays blank, so a single glance shows exactly which averages have been lost and
+on which timeframe.
+
+The app shows **live data only** — current price and current EMAs. There is deliberately no
+historical / past-day browsing.
+
+---
+
+## Table of contents
+
+1. [How it works](#how-it-works)
+2. [Project structure](#project-structure)
+3. [Setup](#setup)
+4. [Running the app](#running-the-app)
+5. [Adding and editing tickers](#adding-and-editing-tickers)
+6. [Changing the scheduled run times](#changing-the-scheduled-run-times)
+7. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
+8. [Stopping the scheduled task](#stopping-the-scheduled-task)
+9. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
+10. [EMA and colour logic](#ema-and-colour-logic)
+11. [Error handling and logging](#error-handling-and-logging)
+12. [Configuration reference](#configuration-reference)
+13. [HTTP API](#http-api)
+14. [Known limitations](#known-limitations)
+15. [Planned features](#planned-features)
+
+---
+
+## How it works
+
+```
+config/portfolios.json ──┐
+config/settings.json  ───┤
+                         ▼
+   scheduled_run.py / "Refresh now"  ──►  yfinance  ──►  EMA engine
+                         │
+                         ├──►  data/snapshot.json   (what the tables render from)
+                         └──►  data/status.json     ("new data available", version counter)
+                                       │
+                                       ▼
+                  Flask (daemon thread)  ──SSE──►  pywebview desktop window
+                                                   (auto-refreshes on new data)
+                  scheduled_run.py  ──►  show_window.py  ──►  pops up reminder window
+                                         (only if no window is already open)
+```
+
+* **Prices/history** come from `yfinance`. NSE symbols use the `.NS` suffix, BSE uses `.BO`.
+* **Weekly candles** are derived by resampling the daily history (Friday-anchored), so only one
+  network request per ticker is needed and the in-progress week reflects the live price.
+* **Two processes, one set of files.** The Flask app and the Windows scheduled task never talk
+  directly; they share `data/snapshot.json` and `data/status.json`.
+
+## Project structure
+
+```
+Daily Updater/
+├── app.py                     # Desktop window entry point (python app.py)
+├── show_window.py             # Reminder popup launched after a scheduled refresh
+├── scheduled_run.py           # Batch refresh entry point (run by Task Scheduler)
+├── requirements.txt
+├── config.template.json       # Template for config/settings.json
+├── portfolios.template.json   # Template for config/portfolios.json
+├── stockmon/
+│   ├── paths.py               # Where config/data/logs live (env-overridable)
+│   ├── jsonstore.py           # Atomic JSON read/write shared by both processes
+│   ├── logging_config.py      # Rotating file + console logging
+│   ├── errors.py              # ValidationError / DataFetchError
+│   ├── config_manager.py      # settings.json (schedule, EMA periods, UI options)
+│   ├── portfolio.py           # Ticker validation, portfolios, TradingView links, add-log
+│   ├── data_fetcher.py        # yfinance access with retries and graceful failures
+│   ├── ema.py                 # Weekly resampling + EMA computation and data checks
+│   ├── service.py             # Orchestration: fetch → EMAs → snapshot → status
+│   ├── status.py              # The "new data available" signal (version counter)
+│   └── web/
+│       ├── __init__.py        # Flask application factory
+│       └── routes.py          # Pages, JSON API and the SSE stream
+├── templates/
+│   ├── index.html             # Page shell: controls, error panel, footer
+│   └── _tables.html           # Portfolio tables (re-rendered on every refresh)
+├── static/
+│   ├── css/styles.css
+│   └── js/app.js              # Refresh, add/remove, schedule editing, SSE handling
+├── scripts/
+│   ├── run_scheduled.ps1      # What Task Scheduler runs
+│   ├── run_scheduled.bat      # .bat wrapper around the above
+│   └── register_task.ps1      # Creates/updates the task from config/settings.json
+├── config/                    # Generated on first run (settings.json, portfolios.json)
+├── data/                      # Generated: snapshot.json, status.json, pending_additions.json
+└── logs/                      # Generated: app.log, scheduler.log, ticker_additions.log
+```
+
+## Setup
+
+Requires **Python 3.10+** on Windows. **No API keys are required** — `yfinance` uses public Yahoo
+Finance endpoints. The desktop window is provided by
+[pywebview](https://pywebview.flowrl.com/) (installed automatically with `pip install -r requirements.txt`).
+
+```powershell
+cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
+
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+`config/settings.json` and `config/portfolios.json` are created automatically on first run from the
+built-in defaults (the two `*.template.json` files in the project root document the same shape and
+can be copied into `config/` if you prefer to pre-seed them).
+
+## Running the app
+
+```powershell
+.\.venv\Scripts\python.exe app.py                 # opens a native desktop window
+.\.venv\Scripts\python.exe app.py --port 8000     # different port
+.\.venv\Scripts\python.exe app.py --browser       # open in the system browser instead
+.\.venv\Scripts\python.exe app.py --debug         # browser mode with auto-reload for development
+```
+
+By default the app opens as a **native desktop window** (1200 × 800) via
+[pywebview](https://pywebview.flowrl.com/). Flask runs in a background thread and serves
+the UI inside the window. Closing the window stops the app.
+
+Use `--browser` to fall back to the original behaviour (opens in the system browser at
+`http://127.0.0.1:5000`). Use `--debug` for Flask auto-reload during development (also opens in the
+browser).
+
+If no data has been fetched yet, click **Refresh now** (or run `python scheduled_run.py` once) to
+populate the tables.
+
+Each ticker name in the table is a hyperlink that opens that symbol's **TradingView chart** in a new
+tab (`NSE:RELIANCE` / `BSE:500325`), with the **company name** displayed directly below the symbol.
+Each portfolio table can also be **collapsed or expanded** using the button below the table.
+
+## Adding and editing tickers
+
+**Through the UI** — pick the portfolio, type the symbol and click **Add &amp; fetch**:
+
+* Plain symbols get the default suffix (`.NS`) automatically — `CARTRADE` becomes `CARTRADE.NS`.
+  Type `500325.BO` for a BSE listing.
+* **Real-time duplicate check**: As you type a symbol into the box, the UI immediately alerts you if
+  that stock is already in the selected portfolio (or another portfolio).
+* The symbol format is validated, duplicates within a portfolio are rejected, and the ticker is
+  **fetched immediately** (including the live company name). If `yfinance` returns nothing
+  (typo, delisted, network down) the ticker is **not** added and the reason is shown in the UI.
+* On success the row is inserted into the live table right away — you do not wait for the next
+  scheduled run.
+* The addition is also **logged** to `logs/ticker_additions.log` and queued in
+  `data/pending_additions.json`. The next scheduled run consumes that queue, records
+  *"Picked up N newly added ticker(s)"* in `logs/scheduler.log`, and refreshes the new ticker along
+  with the rest of the portfolio.
+* The `×` button at the end of a row removes that ticker from the portfolio.
+
+**By editing the file** — `config/portfolios.json`:
+
+```json
+{
+  "BAPA": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS"],
+  "MADI": ["INFY.NS", "ITC.NS", "CARTRADE.NS"]
+}
+```
+
+Invalid entries are logged and skipped rather than crashing the app. Click **Refresh now** after
+editing the file by hand.
+
+## Changing the scheduled run times
+
+The two run times (default **09:30** and **11:30**) live in `config/settings.json`:
+
+```json
+"schedule": { "run_times": ["09:30", "11:30"], "timezone": "Asia/Kolkata", "task_name": "StockMonitor-DailyUpdate" }
+```
+
+Set them in the **Scheduled run times** panel of the UI and click **Save times**. The UI writes to
+that exact file — the same file `scripts/run_scheduled.ps1` and `scripts/register_task.ps1` read — so
+no code change is needed. Times are validated as 24-hour `HH:MM`; exactly two are required.
+
+Because Windows Task Scheduler stores its own copy of the trigger times, the new times reach it in
+one of two ways:
+
+1. **Automatically** — after every run, `run_scheduled.ps1` calls `register_task.ps1 -Sync`, which
+   compares the task's triggers with `config/settings.json` and updates them if they differ.
+   (So a change made today is picked up at the next existing run and applies from then on.)
+2. **Immediately** — run it yourself:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
+   ```
+
+## Windows Task Scheduler setup
+
+**Recommended (scripted):**
+
+```powershell
+cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
+```
+
+This reads `config/settings.json` and registers a task (default name
+`StockMonitor-DailyUpdate`) with one **daily trigger per configured time**, running
+`powershell.exe -File scripts\run_scheduled.ps1` with the project folder as its working directory.
+Useful switches: `-Sync` (only update when the times changed), `-Unregister` (remove the task),
+`-TaskName <name>`.
+
+**Manual (Task Scheduler GUI)** — if you prefer to create it by hand:
+
+| Setting | Value |
+| --- | --- |
+| General → Name | `StockMonitor-DailyUpdate` |
+| General → Run whether user is logged on or not | optional |
+| Triggers | Daily at `09:30`, and a second Daily trigger at `11:30` |
+| Action → Program/script | `powershell.exe` |
+| Action → Add arguments | `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\...\Daily Updater\scripts\run_scheduled.ps1"` |
+| Action → Start in | `C:\...\Daily Updater` |
+| Settings | *Run task as soon as possible after a scheduled start is missed* |
+
+`scripts\run_scheduled.bat` is a drop-in alternative if you would rather point the action at a
+`.bat` file.
+
+**What a run does:**
+
+1. Locates the interpreter (`.venv\Scripts\python.exe`, then `venv\`, then `python.exe` on `PATH`).
+2. Runs `scheduled_run.py`, which consumes the queue of newly added tickers, fetches every ticker in
+   both portfolios, and rewrites `data/snapshot.json` (the file the Flask app reads).
+3. Bumps `data/status.json` so any open desktop window refreshes itself via SSE.
+4. **Pops up a reminder window** — on success, launches `show_window.py` which opens a desktop
+   window showing the updated data. If a window is already open, this step is skipped and SSE
+   delivers the update silently.
+5. Re-syncs the task triggers with `config/settings.json`.
+6. Logs the outcome to `logs/scheduler.log` (plus a runner transcript in
+   `logs/scheduled_run_console.log`).
+
+Exit codes: `0` success, `1` every ticker failed, `2` unexpected fatal error.
+
+Test it any time without waiting for the clock:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_scheduled.ps1
+```
+
+## Stopping the scheduled task
+
+If you no longer want the twice-daily scheduled runs (and the reminder popup), you can **disable** or
+**remove** the Windows Task Scheduler task.
+
+### Remove the task entirely (scripted)
+
+```powershell
+cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1 -Unregister
+```
+
+This deletes the `StockMonitor-DailyUpdate` task from Task Scheduler. You can re-create it later by
+running `register_task.ps1` again without `-Unregister`.
+
+### Disable the task temporarily (GUI)
+
+1. Press **Win + R**, type `taskschd.msc`, press Enter.
+2. In the left pane navigate to **Task Scheduler Library**.
+3. Find the task named **StockMonitor-DailyUpdate** in the list.
+4. Right-click it → **Disable**.
+
+The task stays registered but will not fire until you right-click → **Enable** it again.
+
+### Disable the task temporarily (PowerShell)
+
+```powershell
+# Disable (stop all future runs)
+Disable-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
+
+# Re-enable when you want it back
+Enable-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
+```
+
+### Skip a single run
+
+If you just want to stop the **currently running** instance (or prevent the next imminent one):
+
+```powershell
+# Stop a run that is executing right now
+Stop-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
+```
+
+The task remains enabled and will fire again at the next configured time.
+
+### Check current status
+
+```powershell
+Get-ScheduledTask -TaskName "StockMonitor-DailyUpdate" | Select-Object TaskName, State
+```
+
+| State | Meaning |
+| --- | --- |
+| `Ready` | Enabled, waiting for the next trigger |
+| `Running` | Currently executing |
+| `Disabled` | Will not fire until re-enabled |
+
+## How the scheduler notifies the app
+
+The scheduled task runs in its **own process**, so it signals the app through a shared file:
+
+* Every successful refresh writes `data/status.json` with an incremented `version`, a timestamp, the
+  source (`scheduled`, `manual`, `ticker-added`, `ticker-removed`) and a summary.
+* The desktop window holds an **SSE** connection to `GET /api/stream`. The Flask app watches the
+  status file and pushes an `update` event as soon as the version changes.
+* On that event the page fetches `GET /api/tables` and swaps in freshly rendered tables — no reload
+  and no manual click. A toast confirms *"Scheduled run finished — 6/6 tickers refreshed"*.
+* If `EventSource` is unavailable or the stream closes permanently, the page falls back to polling
+  `GET /api/status` every `ui.status_poll_seconds`. The indicator in the footer shows which mode is
+  active (`live` / `polling for updates`).
+
+The same mechanism drives the **Refresh now** button, ticker additions and removals, so every window
+stays in sync.
+
+## EMA and colour logic
+
+* EMA uses the standard smoothed formula, `close.ewm(span=n, adjust=False)`, matching charting
+  platforms.
+* **Daily** values come from the daily close series; **weekly** values from Friday-anchored weekly
+  candles resampled from the same history. The current (unfinished) day and week are included so the
+  numbers are "live".
+* The current price is the live quote when available, otherwise the most recent close (noted in the
+  row's tooltip). When a live quote exists, the forming daily candle's close is updated with it so
+  the intraday EMA matches what a chart shows.
+* **Display rule** per EMA and timeframe:
+
+  | Condition | Cell content |
+  | --- | --- |
+  | price **below** the EMA | **D:** or **W:** label followed by the value, in **red** |
+  | price **above** the EMA | blank (the **D:** / **W:** label is still shown for alignment) |
+
+  Each EMA column stacks the daily value on top (**D:**) and the weekly value below (**W:**).
+  Example: if CARTRADE is below its daily 9 EMA but above its weekly 9 EMA, the "9 EMA" cell shows
+  `D: 245.30` in red on the first line, with the second line (`W:`) blank.
+* **Data sufficiency** is checked before every value. With fewer bars than the EMA period (common for
+  the 200-week EMA on a recently listed stock) the value is omitted and the reason is logged. With
+  fewer than twice the period, the value is shown but the row is marked with an amber `!` whose
+  tooltip explains that it was computed on limited history.
+
+## Error handling and logging
+
+| Situation | Behaviour |
+| --- | --- |
+| Invalid/unknown/delisted symbol | Fetch retried (`data.retries`, exponential backoff), then the ticker is skipped, the row shows *"Data unavailable — …"*, and it is listed in the red **Fetch problems** panel. Other tickers continue to process. |
+| Ticker added through the UI that cannot be fetched | Rejected with an explanation; nothing is written to the portfolio. |
+| Malformed ticker input | Rejected by format validation before any network call. |
+| Duplicate ticker | Rejected with a message naming the portfolio. |
+| Invalid schedule time | Rejected; `config/settings.json` is left untouched. |
+| Corrupt `settings.json` / `portfolios.json` / `snapshot.json` | Logged, moved aside as `*.corrupt`, and regenerated from defaults. |
+| Network outage during a scheduled run | Every failure is logged; exit code `1` if nothing could be fetched, so Task Scheduler shows the failure. |
+| Live quote unavailable | Falls back to the latest close and notes it on the row. |
+| Overlapping refreshes | A second concurrent refresh returns HTTP 409 instead of duplicating work. |
+
+Log files (rotating, 5 backups):
+
+| File | Contents |
+| --- | --- |
+| `logs/app.log` | Web app activity: refreshes, additions/removals, schedule edits, errors |
+| `logs/scheduler.log` | One block per scheduled run: tickers picked up, per-ticker failures, totals |
+| `logs/ticker_additions.log` | Audit trail of every ticker added through the UI |
+| `logs/scheduled_run_console.log` | Transcript written by the PowerShell runner |
+
+## Configuration reference
+
+`config/settings.json` (see `config.template.json`):
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `schedule.run_times` | `["09:30", "11:30"]` | The two daily run times, editable from the UI |
+| `schedule.timezone` | `Asia/Kolkata` | Informational label for the market timezone |
+| `schedule.task_name` | `StockMonitor-DailyUpdate` | Windows scheduled task name |
+| `data.default_exchange_suffix` | `.NS` | Suffix applied to symbols entered without one |
+| `data.history_period` | `10y` | History downloaded per ticker (needs ≥ 200 weeks for the 200-week EMA) |
+| `data.ema_periods` | `[9, 21, 50, 100, 200]` | EMA periods; adding one adds a table column |
+| `data.max_workers` | `4` | Parallel ticker downloads |
+| `data.retries` / `data.retry_backoff_seconds` | `2` / `1.5` | Retry policy per ticker |
+| `ui.status_poll_seconds` | `5` | Poll interval used when SSE is unavailable |
+| `ui.price_decimals` | `2` | Decimal places for prices and EMAs |
+
+The config/data/log locations can be relocated with the `STOCKMON_CONFIG_DIR`, `STOCKMON_DATA_DIR`
+and `STOCKMON_LOG_DIR` environment variables (both processes must see the same values).
+
+## HTTP API
+
+| Method &amp; path | Purpose |
+| --- | --- |
+| `GET /` | The UI |
+| `GET /api/tables` | Freshly rendered table HTML + stats + errors (no re-fetch) |
+| `GET /api/data` | Raw `snapshot.json` |
+| `POST /api/refresh` | Re-fetch everything now |
+| `POST /api/tickers` | `{portfolio, symbol}` — validate, fetch immediately, add |
+| `DELETE /api/tickers` | `{portfolio, symbol}` — remove |
+| `GET` / `POST /api/schedule` | Read / write the two run times |
+| `GET /api/status` | Current data version and last-run summary |
+| `GET /api/stream` | Server-Sent Events feed of status changes |
+
+## Known limitations
+
+* **Live data only.** No historical or past-day view, no charts, no snapshot archive — by design.
+* Data comes from the free Yahoo Finance endpoints via `yfinance`: quotes can be delayed, rate
+  limited, or occasionally unavailable, and coverage of thinly traded BSE scrips is patchy.
+* Weekly candles are resampled from daily bars (Friday-anchored). They match standard weekly charts
+  but may differ marginally from a broker's own weekly series around holidays.
+* EMAs are only as good as the available history: newly listed stocks cannot produce a meaningful
+  200-week EMA, and such values are omitted or flagged.
+* The Flask development server is used behind the pywebview desktop window — this is a **local,
+  single-user tool**. It has no authentication and should not be exposed beyond `127.0.0.1`.
+* The scheduler is Windows Task Scheduler; the app itself runs no internal timer, so scheduled
+  refreshes require the machine to be on.
+* Portfolio names are fixed to `BAPA` and `MADI` in this version.
+
+## Planned features
+
+This is an early version, intentionally modular so features can be layered on:
+
+* Per-ticker notes, quantity/average price and simple P&amp;L columns.
+* Configurable portfolios (add, rename or remove portfolios from the UI).
+* Alerts — desktop or email notification when a price crosses a watched EMA.
+* Sorting and filtering (e.g. "show only tickers below the 200 EMA").
+* Additional indicators (RSI, ATR, volume averages) and monthly timeframe support.
+* Optional historical snapshot archive and a "what changed since the last run" diff view.
+* Pluggable data providers (NSE official API, broker APIs) as a fallback for `yfinance`.
+* Export to CSV/Excel.
+* Automated test suite with recorded `yfinance` fixtures.

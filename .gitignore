@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime state (generated on first run)
+config/settings.json
+config/portfolios.json
+data/
+logs/
+*.corrupt
