@@ -10,3 +10,7 @@ config/portfolios.json
 data/
 logs/
 *.corrupt
+
+# Frontend
+frontend/node_modules/
+frontend/.vite/

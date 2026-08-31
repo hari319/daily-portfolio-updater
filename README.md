@@ -1,10 +1,9 @@
-# Portfolio EMA Monitor (BAPA &amp; MADI)
+# Portfolio and Stock Monitor (BAPA &amp; MADI)
 
 A local desktop application that tracks two NSE/BSE stock portfolios — **BAPA** and **MADI** — and
 flags, at a glance, every EMA the current price has fallen below.
 
-The app opens as a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/))
-rather than a browser tab. For each ticker it computes the **9, 21, 50, 100 and 200 period EMA** on
+The app features a modern **React + Bootstrap 5** single-page interface and opens as a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/)) or in any browser. For each ticker it computes the **9, 21, 50, 100 and 200 period EMA** on
 both the **daily** and the **weekly** timeframe (10 values per ticker).
 
 * **Signal Column**: Shows **`SELL`** (in red) when the price is below the daily 200 EMA, and **`HOLD`** (in green) otherwise.
@@ -27,17 +26,18 @@ historical / past-day browsing.
 2. [Project structure](#project-structure)
 3. [Setup](#setup)
 4. [Running the app](#running-the-app)
-5. [Adding and editing tickers](#adding-and-editing-tickers)
-6. [Changing the scheduled run times](#changing-the-scheduled-run-times)
-7. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
-8. [Stopping the scheduled task](#stopping-the-scheduled-task)
-9. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
-10. [EMA and colour logic](#ema-and-colour-logic)
-11. [Error handling and logging](#error-handling-and-logging)
-12. [Configuration reference](#configuration-reference)
-13. [HTTP API](#http-api)
-14. [Known limitations](#known-limitations)
-15. [Planned features](#planned-features)
+5. [Frontend Development](#frontend-development)
+6. [Adding and editing tickers](#adding-and-editing-tickers)
+7. [Changing the scheduled run times](#changing-the-scheduled-run-times)
+8. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
+9. [Stopping the scheduled task](#stopping-the-scheduled-task)
+10. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
+11. [EMA and colour logic](#ema-and-colour-logic)
+12. [Error handling and logging](#error-handling-and-logging)
+13. [Configuration reference](#configuration-reference)
+14. [HTTP API](#http-api)
+15. [Known limitations](#known-limitations)
+16. [Planned features](#planned-features)
 
 ---
 
@@ -49,11 +49,11 @@ config/settings.json  ───┤
                          ▼
    scheduled_run.py / "Refresh now"  ──►  yfinance  ──►  EMA engine
                          │
-                         ├──►  data/snapshot.json   (what the tables render from)
+                         ├──►  data/snapshot.json   (what the UI renders from)
                          └──►  data/status.json     ("new data available", version counter)
                                        │
                                        ▼
-                  Flask (daemon thread)  ──SSE──►  pywebview desktop window
+                  Flask (daemon thread)  ──SSE──►  React Frontend (pywebview / Browser)
                                                    (auto-refreshes on new data)
                   scheduled_run.py  ──►  show_window.py  ──►  pops up reminder window
                                          (only if no window is already open)
@@ -75,6 +75,11 @@ Daily Updater/
 ├── requirements.txt
 ├── config.template.json       # Template for config/settings.json
 ├── portfolios.template.json   # Template for config/portfolios.json
+├── frontend/                  # React + Bootstrap 5 frontend (Vite)
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── dist/                  # Production build served by Flask
+│   └── src/                   # React components, styles, and API client
 ├── stockmon/
 │   ├── paths.py               # Where config/data/logs live (env-overridable)
 │   ├── jsonstore.py           # Atomic JSON read/write shared by both processes
@@ -87,14 +92,8 @@ Daily Updater/
 │   ├── service.py             # Orchestration: fetch → EMAs → snapshot → status
 │   ├── status.py              # The "new data available" signal (version counter)
 │   └── web/
-│       ├── __init__.py        # Flask application factory
-│       └── routes.py          # Pages, JSON API and the SSE stream
-├── templates/
-│   ├── index.html             # Page shell: controls, error panel, footer
-│   └── _tables.html           # Portfolio tables (re-rendered on every refresh)
-├── static/
-│   ├── css/styles.css
-│   └── js/app.js              # Refresh, add/remove, schedule editing, SSE handling
+│       ├── __init__.py        # Flask application factory (serves React build)
+│       └── routes.py          # REST API endpoints and SSE stream
 ├── scripts/
 │   ├── run_scheduled.ps1      # What Task Scheduler runs
 │   ├── run_scheduled.bat      # .bat wrapper around the above
@@ -144,7 +143,24 @@ populate the tables.
 
 Each ticker name in the table is a hyperlink that opens that symbol's **TradingView chart** in a new
 tab (`NSE:RELIANCE` / `BSE:500325`), with the **company name** displayed directly below the symbol.
-Each portfolio table can also be **collapsed or expanded** using the button below the table.
+## Frontend Development
+
+The frontend is built with **React**, **Bootstrap 5**, and **Lucide Icons** using **Vite**.
+
+```powershell
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start Vite hot-reload development server (proxies /api to Flask at 127.0.0.1:5000)
+npm run dev
+
+# Build production bundle into frontend/dist/ (served by Flask and pywebview desktop window)
+npm run build
+```
+
+---
 
 ## Adding and editing tickers
 

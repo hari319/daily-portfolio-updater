@@ -1,4 +1,4 @@
-"""Pop up the Portfolio EMA Monitor as a desktop window (reminder).
+"""Pop up the Portfolio and Stock Monitor as a desktop window (reminder).
 
 Launched by the scheduled task runner after a successful data refresh.
 Opens on top of all currently running applications. If the app is already
@@ -28,7 +28,7 @@ def _port_in_use(host: str, port: int) -> bool:
 
 
 def _bring_existing_window_to_top() -> bool:
-    """Find the existing Portfolio EMA Monitor window and bring it to the top."""
+    """Find the existing Portfolio and Stock Monitor window and bring it to the top."""
     try:
         import ctypes
         from ctypes import wintypes
@@ -44,7 +44,10 @@ def _bring_existing_window_to_top() -> bool:
                 if length > 0:
                     buf = ctypes.create_unicode_buffer(length + 1)
                     user32.GetWindowTextW(hwnd, buf, length + 1)
-                    if "Portfolio EMA Monitor" in buf.value:
+                    if (
+                        "Portfolio and Stock Monitor" in buf.value
+                        or "Portfolio EMA Monitor" in buf.value
+                    ):
                         found_hwnd = hwnd
                         return False
             return True
@@ -97,7 +100,7 @@ def main() -> None:
     _wait_for_server(DEFAULT_HOST, DEFAULT_PORT)
 
     webview.create_window(
-        "Portfolio EMA Monitor — Updated",
+        "Portfolio and Stock Monitor — Updated",
         f"http://{DEFAULT_HOST}:{DEFAULT_PORT}",
         width=1200,
         height=800,

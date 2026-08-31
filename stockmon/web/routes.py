@@ -8,11 +8,20 @@ import threading
 import time
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
+from flask import (
+    Blueprint,
+    Response,
+    jsonify,
+    render_template,
+    request,
+    send_from_directory,
+    stream_with_context,
+)
 
 from .. import status as status_store
 from ..config_manager import get_run_times, load_settings, set_run_times
 from ..errors import ValidationError
+from ..paths import BASE_DIR
 from ..portfolio import (
     PORTFOLIO_NAMES,
     add_ticker,
@@ -36,12 +45,15 @@ SSE_TICK_SECONDS = 2
 
 
 def _render_tables(snapshot: dict[str, Any]) -> str:
-    return render_template(
-        "_tables.html",
-        snapshot=snapshot,
-        portfolio_names=PORTFOLIO_NAMES,
-        periods=snapshot.get("ema_periods", load_settings()["data"]["ema_periods"]),
-    )
+    try:
+        return render_template(
+            "_tables.html",
+            snapshot=snapshot,
+            portfolio_names=PORTFOLIO_NAMES,
+            periods=snapshot.get("ema_periods", load_settings()["data"]["ema_periods"]),
+        )
+    except Exception:
+        return ""
 
 
 def _tables_payload(snapshot: dict[str, Any] | None = None, message: str = "") -> dict[str, Any]:
@@ -57,6 +69,7 @@ def _tables_payload(snapshot: dict[str, Any] | None = None, message: str = "") -
         "errors": snapshot.get("errors", []),
         "version": status["version"],
         "status": status,
+        "snapshot": snapshot,
     }
 
 
@@ -66,7 +79,11 @@ def _handle_validation_error(exc: ValidationError):
 
 
 @bp.route("/")
-def index() -> str:
+def index():
+    dist_index = BASE_DIR / "frontend" / "dist" / "index.html"
+    if dist_index.exists():
+        return send_from_directory(str(BASE_DIR / "frontend" / "dist"), "index.html")
+
     settings = load_settings()
     snapshot = load_snapshot()
     return render_template(
