@@ -21,6 +21,7 @@ from flask import (
 from .. import status as status_store
 from ..config_manager import get_run_times, load_settings, set_run_times
 from ..errors import ValidationError
+from ..data_fetcher import fetch_ticker_quote
 from ..paths import BASE_DIR
 from ..portfolio import (
     PORTFOLIO_NAMES,
@@ -31,7 +32,9 @@ from ..portfolio import (
     remove_ticker,
     validate_portfolio,
 )
+from concurrent.futures import ThreadPoolExecutor
 from ..service import build_row, drop_row, load_snapshot, refresh_portfolios, upsert_row
+from ..stock_status import add_stock_status, delete_stock_status, load_stock_statuses, update_stock_status
 
 logger = logging.getLogger(__name__)
 
@@ -226,3 +229,109 @@ def api_stream():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@bp.get("/api/stock-info")
+def api_stock_info():
+    symbol = request.args.get("symbol", "").strip()
+    if not symbol:
+        return jsonify({"ok": False, "error": "Symbol query parameter is required."}), 400
+    try:
+        normalized = normalize_symbol(symbol)
+        quote = fetch_ticker_quote(normalized)
+        return jsonify({"ok": True, **quote})
+    except Exception as exc:
+        logger.warning("Failed to fetch stock info for %s: %s", symbol, exc)
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.get("/api/stock-status")
+def api_get_stock_status():
+    items = load_stock_statuses()
+    return jsonify({"ok": True, "items": items})
+
+
+@bp.post("/api/stock-status")
+def api_add_stock_status():
+    payload = request.get_json(silent=True) or request.form
+    if not payload:
+        return jsonify({"ok": False, "error": "Invalid request payload."}), 400
+    try:
+        entry = add_stock_status(payload)
+        items = load_stock_statuses()
+        return jsonify(
+            {
+                "ok": True,
+                "entry": entry,
+                "items": items,
+                "message": f"Stock status for {entry['symbol']} saved successfully.",
+            }
+        )
+    except ValidationError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("Failed to save stock status")
+        return jsonify({"ok": False, "error": f"Failed to save stock status: {exc}"}), 500
+
+
+@bp.delete("/api/stock-status/<item_id>")
+def api_delete_stock_status(item_id: str):
+    try:
+        items = delete_stock_status(item_id)
+        return jsonify({"ok": True, "items": items, "message": "Stock status removed."})
+    except Exception as exc:
+        logger.exception("Failed to delete stock status %s", item_id)
+        return jsonify({"ok": False, "error": f"Failed to delete stock status: {exc}"}), 500
+
+
+@bp.put("/api/stock-status/<item_id>")
+def api_update_stock_status(item_id: str):
+    payload = request.get_json(silent=True) or request.form
+    if not payload:
+        return jsonify({"ok": False, "error": "Invalid request payload."}), 400
+    try:
+        entry = update_stock_status(item_id, payload)
+        items = load_stock_statuses()
+        return jsonify(
+            {
+                "ok": True,
+                "entry": entry,
+                "items": items,
+                "message": f"Stock status for {entry.get('symbol')} updated successfully.",
+            }
+        )
+    except ValidationError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("Failed to update stock status %s", item_id)
+        return jsonify({"ok": False, "error": f"Failed to update stock status: {exc}"}), 500
+
+
+@bp.post("/api/stock-quotes")
+def api_stock_quotes():
+    """Fetch live quotes in parallel for a list of symbols."""
+    payload = request.get_json(silent=True) or {}
+    raw_symbols = payload.get("symbols", [])
+    if isinstance(raw_symbols, str):
+        raw_symbols = [s.strip() for s in raw_symbols.split(",") if s.strip()]
+
+    symbols = [normalize_symbol(s) for s in raw_symbols if s]
+    if not symbols:
+        return jsonify({"ok": True, "quotes": {}})
+
+    results = {}
+    unique_symbols = sorted(set(symbols))
+    with ThreadPoolExecutor(max_workers=min(8, len(unique_symbols))) as executor:
+        futures = {executor.submit(fetch_ticker_quote, sym): sym for sym in unique_symbols}
+        for future in futures:
+            sym = futures[future]
+            try:
+                quote = future.result()
+                results[sym] = quote
+            except Exception as exc:
+                logger.info("Quote fetch failed for %s: %s", sym, exc)
+                results[sym] = {"symbol": sym, "error": str(exc), "price": None}
+
+    return jsonify({"ok": True, "quotes": results})
+
+

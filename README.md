@@ -28,16 +28,17 @@ historical / past-day browsing.
 4. [Running the app](#running-the-app)
 5. [Frontend Development](#frontend-development)
 6. [Adding and editing tickers](#adding-and-editing-tickers)
-7. [Changing the scheduled run times](#changing-the-scheduled-run-times)
-8. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
-9. [Stopping the scheduled task](#stopping-the-scheduled-task)
-10. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
-11. [EMA and colour logic](#ema-and-colour-logic)
-12. [Error handling and logging](#error-handling-and-logging)
-13. [Configuration reference](#configuration-reference)
-14. [HTTP API](#http-api)
-15. [Known limitations](#known-limitations)
-16. [Planned features](#planned-features)
+7. [Stock Status & Analysis Scenarios](#stock-status--analysis-scenarios)
+8. [Changing the scheduled run times](#changing-the-scheduled-run-times)
+9. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
+10. [Stopping the scheduled task](#stopping-the-scheduled-task)
+11. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
+12. [EMA and colour logic](#ema-and-colour-logic)
+13. [Error handling and logging](#error-handling-and-logging)
+14. [Configuration reference](#configuration-reference)
+15. [HTTP API](#http-api)
+16. [Known limitations](#known-limitations)
+17. [Planned features](#planned-features)
 
 ---
 
@@ -192,6 +193,32 @@ npm run build
 
 Invalid entries are logged and skipped rather than crashing the app. Click **Refresh now** after
 editing the file by hand.
+
+## Stock Status & Analysis Scenarios
+
+The app includes a dedicated **Status** tab alongside the **Tracker** tab for tracking fundamental & technical stock valuation targets (Base, Bull, Bear) across analysis dates.
+
+### Key Features & Usage
+
+* **Tab Navigation**: Toggle between the portfolio **Tracker** (EMA monitor) and **Status** (stock scenarios table).
+* **Live Search**: Type into the search box at the top to filter status records by ticker or company name in real time.
+* **Adding a Stock Analysis**:
+  1. Click **+ Add Stock** in the Status tab.
+  2. Enter the ticker symbol (e.g. `INFY` or `TATAMOTORS.NS`) and click **Fetch**. This retrieves the company name and current market price from Yahoo Finance as your baseline **Price of Analysis**.
+  3. Enter **Target Price** and **Target CAGR (%)** for the **Base**, **Bull**, and **Bear** scenarios.
+  4. Add optional **Remarks** (thesis notes, catalysts, stoploss) and click **Submit**. The entry is automatically saved with the current date.
+* **Live Current Price & Timestamp**:
+  * Displays the live stock price in real time with the date & time of the quote underneath.
+  * Shows a color-coded percentage badge (`+X.X%` / `-X.X%`) comparing the current live price against the baseline analysis price.
+  * **Quote Caching & Fallback**: Quotes are cached locally in `data/quotes_cache.json` (with max 2 retry attempts). If a live quote fails or times out, the last known stored price and its timestamp are displayed seamlessly.
+* **Refresh Prices Button**: Located in the Status tab to update live market quotes and timestamps for all analysed stocks on demand. *(Note: The header **Refresh now** button remains dedicated to recomputing the Tracker portfolio EMAs).*
+* **Row Editing & Multi-History Records**:
+  * Click the **Edit** (pencil) icon on any row to open the modal:
+    * **Existing**: Update targets, CAGR %, or remarks for the existing analysis date.
+    * **New (History)**: Creates a new historical analysis record for that stock using today's date and a fresh live market price.
+* **Historical Analysis Date Dropdown**:
+  * When a ticker has multiple analysis entries, the **Date of Analysis** column renders a dropdown selector.
+  * Switching the date dynamically displays the historical baseline price, scenario targets, and remarks recorded on that date, while the **Current Price** remains live.
 
 ## Changing the scheduled run times
 
@@ -427,6 +454,12 @@ and `STOCKMON_LOG_DIR` environment variables (both processes must see the same v
 | `GET` / `POST /api/schedule` | Read / write the two run times |
 | `GET /api/status` | Current data version and last-run summary |
 | `GET /api/stream` | Server-Sent Events feed of status changes |
+| `GET /api/stock-info?symbol=...` | Fetch live stock price and company name for single ticker |
+| `POST /api/stock-quotes` | Batch fetch live stock quotes and timestamps for multiple tickers |
+| `GET /api/stock-status` | Get all saved stock status and scenario analysis entries |
+| `POST /api/stock-status` | Add a new stock status / scenario entry |
+| `PUT /api/stock-status/<id>` | Update an existing stock status entry |
+| `DELETE /api/stock-status/<id>` | Delete a stock status entry |
 
 ## Known limitations
 

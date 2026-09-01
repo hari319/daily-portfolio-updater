@@ -13,9 +13,77 @@ from typing import Any
 
 import pandas as pd
 
+from datetime import datetime
 from .errors import DataFetchError
+from .jsonstore import read_json, write_json
+from .paths import QUOTES_CACHE_FILE
 
 logger = logging.getLogger(__name__)
+
+
+def load_quotes_cache() -> dict[str, dict[str, Any]]:
+    cache = read_json(QUOTES_CACHE_FILE, default={})
+    return cache if isinstance(cache, dict) else {}
+
+
+def save_quote_to_cache(symbol: str, quote: dict[str, Any]) -> None:
+    cache = load_quotes_cache()
+    cache[symbol] = quote
+    write_json(QUOTES_CACHE_FILE, cache)
+
+
+def fetch_ticker_quote(symbol: str) -> dict[str, Any]:
+    """Fetch live quote for a symbol with strictly max 2 total attempts and persistent caching."""
+    live_price = None
+    currency = "INR"
+    name = ""
+
+    # Attempt 1: Fast live price
+    try:
+        live_price, cur, nm = fetch_live_price(symbol)
+        if cur:
+            currency = cur
+        if nm:
+            name = nm
+    except Exception as exc:
+        logger.info("Attempt 1 failed for %s: %s", symbol, exc)
+
+    # Attempt 2: Fallback to last close from daily history if live price was not found
+    if live_price is None or live_price <= 0:
+        try:
+            daily = fetch_daily_history(symbol, period="5d", retries=1)
+            if not daily.empty and "Close" in daily.columns:
+                live_price = float(daily["Close"].iloc[-1])
+        except Exception as exc:
+            logger.info("Attempt 2 (daily close fallback) failed for %s: %s", symbol, exc)
+
+    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # If fetch succeeded:
+    if live_price is not None and live_price > 0:
+        quote = {
+            "symbol": symbol,
+            "name": name or symbol,
+            "price": round(live_price, 2),
+            "currency": currency or "INR",
+            "as_of": now_iso,
+            "is_cached": False,
+        }
+        try:
+            save_quote_to_cache(symbol, quote)
+        except Exception as exc:
+            logger.warning("Could not save quote to cache: %s", exc)
+        return quote
+
+    # If fetch failed: Check cached quotes
+    cache = load_quotes_cache()
+    if symbol in cache and cache[symbol].get("price") is not None:
+        cached = dict(cache[symbol])
+        cached["is_cached"] = True
+        logger.info("Using cached quote for %s: %s", symbol, cached)
+        return cached
+
+    raise DataFetchError(symbol, f"Could not fetch price for {symbol}.")
 
 
 @dataclass

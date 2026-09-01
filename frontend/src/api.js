@@ -58,6 +58,33 @@ export async function fetchStatus() {
   return request('/api/status');
 }
 
+export async function fetchStockInfo(symbol) {
+  const enc = encodeURIComponent(symbol.trim());
+  return request(`/api/stock-info?symbol=${enc}`);
+}
+
+export async function fetchStockStatuses() {
+  return request('/api/stock-status');
+}
+
+export async function addStockStatus(data) {
+  return sendJson('/api/stock-status', 'POST', data);
+}
+
+export async function updateStockStatus(itemId, data) {
+  return sendJson(`/api/stock-status/${encodeURIComponent(itemId)}`, 'PUT', data);
+}
+
+export async function deleteStockStatus(itemId) {
+  return request(`/api/stock-status/${encodeURIComponent(itemId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchBatchQuotes(symbols) {
+  return sendJson('/api/stock-quotes', 'POST', { symbols });
+}
+
 /**
  * Connects to the SSE stream on /api/stream.
  * Automatically falls back to periodic polling if SSE is unavailable or permanently closed.

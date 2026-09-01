@@ -29,6 +29,8 @@ PORTFOLIOS_FILE = CONFIG_DIR / "portfolios.json"
 SNAPSHOT_FILE = DATA_DIR / "snapshot.json"
 STATUS_FILE = DATA_DIR / "status.json"
 PENDING_ADDITIONS_FILE = DATA_DIR / "pending_additions.json"
+STOCK_STATUS_FILE = DATA_DIR / "stock_status.json"
+QUOTES_CACHE_FILE = DATA_DIR / "quotes_cache.json"
 
 APP_LOG_FILE = LOG_DIR / "app.log"
 SCHEDULER_LOG_FILE = LOG_DIR / "scheduler.log"

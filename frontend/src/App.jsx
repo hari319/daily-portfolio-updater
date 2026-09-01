@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Activity, Target } from 'lucide-react';
 import * as api from './api';
 import Header from './components/Header';
 import AddTickerPanel from './components/AddTickerPanel';
 import SchedulePanel from './components/SchedulePanel';
 import ErrorsPanel from './components/ErrorsPanel';
 import PortfolioSection from './components/PortfolioSection';
+import StatusTab from './components/StatusTab';
 import Toast from './components/Toast';
 import Footer from './components/Footer';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('tracker'); // 'tracker' | 'status'
   const [snapshot, setSnapshot] = useState(null);
   const [runTimes, setRunTimes] = useState(['09:30', '11:30']);
   const [portfolioNames, setPortfolioNames] = useState(['BAPA', 'MADI']);
@@ -174,46 +177,91 @@ export default function App() {
         stats={stats}
         isRefreshing={isRefreshing}
         onRefresh={handleRefresh}
+        showRefresh={activeTab === 'tracker'}
       />
 
-      {/* Control Panels: Add Ticker & Schedule */}
-      <section className="row g-3 mb-4">
-        <div className="col-12 col-lg-7">
-          <AddTickerPanel
-            portfolioNames={portfolioNames}
-            portfolios={portfolios}
-            onAddTicker={handleAddTicker}
-            disabled={isBusy}
-          />
-        </div>
-        <div className="col-12 col-lg-5">
-          <SchedulePanel
-            initialRunTimes={runTimes}
-            onSaveSchedule={handleSaveSchedule}
-            disabled={isBusy}
-          />
-        </div>
-      </section>
+      {/* Tab Navigation */}
+      <div className="tab-navigation-bar mb-4">
+        <button
+          type="button"
+          className={`tab-nav-item ${activeTab === 'tracker' ? 'active' : ''}`}
+          onClick={() => setActiveTab('tracker')}
+        >
+          <Activity size={16} />
+          <span>Tracker</span>
+        </button>
+        <button
+          type="button"
+          className={`tab-nav-item ${activeTab === 'status' ? 'active' : ''}`}
+          onClick={() => setActiveTab('status')}
+        >
+          <Target size={16} />
+          <span>Status</span>
+        </button>
+      </div>
 
-      {/* Errors / Fetch Problems */}
-      <ErrorsPanel errors={errors} />
+      {/* Tab Content: Tracker vs Status */}
+      {activeTab === 'tracker' ? (
+        <>
+          {/* Control Panels: Add Ticker & Schedule */}
+          <section className="row g-3 mb-4">
+            <div className="col-12 col-lg-7">
+              <AddTickerPanel
+                portfolioNames={portfolioNames}
+                portfolios={portfolios}
+                onAddTicker={handleAddTicker}
+                disabled={isBusy}
+              />
+            </div>
+            <div className="col-12 col-lg-5">
+              <SchedulePanel
+                initialRunTimes={runTimes}
+                onSaveSchedule={handleSaveSchedule}
+                disabled={isBusy}
+              />
+            </div>
+          </section>
 
-      {/* Main Portfolio Tables */}
-      <main className={isBusy ? 'busy-overlay' : ''}>
-        {portfolioNames.map((name) => (
-          <PortfolioSection
-            key={name}
-            name={name}
-            portfolioData={portfolios[name]}
-            periods={periods}
-            onRemoveTicker={handleRemoveTicker}
-            disabled={isBusy}
-          />
-        ))}
-      </main>
+          {/* Errors / Fetch Problems */}
+          <ErrorsPanel errors={errors} />
+
+          {/* Main Portfolio Tables */}
+          <main className={isBusy ? 'busy-overlay' : ''}>
+            {portfolioNames.map((name) => (
+              <PortfolioSection
+                key={name}
+                name={name}
+                portfolioData={portfolios[name]}
+                periods={periods}
+                onRemoveTicker={handleRemoveTicker}
+                disabled={isBusy}
+              />
+            ))}
+          </main>
+        </>
+      ) : (
+        <StatusTab
+          showToast={showToast}
+          isBusy={isBusy}
+          setIsBusy={setIsBusy}
+        />
+      )}
 
       {/* Footer */}
       <Footer connectionStatus={connectionStatus} />
+
+      {/* Full-screen Loading Overlay for Refresh */}
+      {isRefreshing && (
+        <div className="fullscreen-loading-overlay" role="status" aria-live="polite">
+          <div className="loading-card">
+            <div className="spinner-border text-primary loading-spinner" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <h4 className="loading-title">Refreshing Market Data</h4>
+            <p className="loading-subtitle">Fetching latest NSE/BSE quotes and updating portfolio EMAs...</p>
+          </div>
+        </div>
+      )}
 
       {/* Toast notifications */}
       <Toast
