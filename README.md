@@ -39,6 +39,7 @@ historical / past-day browsing.
 15. [HTTP API](#http-api)
 16. [Known limitations](#known-limitations)
 17. [Planned features](#planned-features)
+18. [Knowledge Graph & Architecture Map](docs/KNOWLEDGE_GRAPH.md)
 
 ---
 
@@ -81,6 +82,8 @@ Daily Updater/
 │   ├── vite.config.js
 │   ├── dist/                  # Production build served by Flask
 │   └── src/                   # React components, styles, and API client
+├── docs/
+│   └── KNOWLEDGE_GRAPH.md     # Architectural map & module guide for developers/agents
 ├── stockmon/
 │   ├── paths.py               # Where config/data/logs live (env-overridable)
 │   ├── jsonstore.py           # Atomic JSON read/write shared by both processes
@@ -205,8 +208,20 @@ The app includes a dedicated **Status** tab alongside the **Tracker** tab for tr
 * **Adding a Stock Analysis**:
   1. Click **+ Add Stock** in the Status tab.
   2. Enter the ticker symbol (e.g. `INFY` or `TATAMOTORS.NS`) and click **Fetch**. This retrieves the company name and current market price from Yahoo Finance as your baseline **Price of Analysis**.
-  3. Enter **Target Price** and **Target CAGR (%)** for the **Base**, **Bull**, and **Bear** scenarios.
-  4. Add optional **Remarks** (thesis notes, catalysts, stoploss) and click **Submit**. The entry is automatically saved with the current date.
+  3. Enter optional **Best Entry** price and choose a **Status** stance (`Buy`, `Avoid`, `Hold`, `Acc on dip`).
+  4. Enter **Target Price** and **Target CAGR (%)** for the **Base**, **Bull**, and **Bear** scenarios.
+  5. Add optional **Remarks** (thesis notes, catalysts, stoploss) and click **Submit**. The entry is automatically saved with the current date.
+* **Best Entry & Status Columns**:
+  * **Best Entry**: Displays your target purchase price alongside a color-coded percentage badge (`+X.X%` / `-X.X%`) comparing the live Current Price to the Best Entry price, using the exact same calculation and badge styling as Current Price.
+  * **Status**: Color-coded indicator badge for quick orientation:
+    * `Buy` — green
+    * `Avoid` — red
+    * `Hold` — yellow
+    * `Acc on dip` — light green
+  * **Actions Column**: Placed conveniently next to the Best Entry column for quick editing or deletion.
+* **Remarks Display & Collapsible Preview**:
+  * The Remarks column renders multi-line text with exact whitespace, line breaks, and bullet formatting matching the input text field.
+  * Collapsed by default showing a clean preview snippet; click **Show more** to expand and **Show less** to collapse.
 * **Live Current Price & Timestamp**:
   * Displays the live stock price in real time with the date & time of the quote underneath.
   * Shows a color-coded percentage badge (`+X.X%` / `-X.X%`) comparing the current live price against the baseline analysis price.
@@ -214,11 +229,11 @@ The app includes a dedicated **Status** tab alongside the **Tracker** tab for tr
 * **Refresh Prices Button**: Located in the Status tab to update live market quotes and timestamps for all analysed stocks on demand. *(Note: The header **Refresh now** button remains dedicated to recomputing the Tracker portfolio EMAs).*
 * **Row Editing & Multi-History Records**:
   * Click the **Edit** (pencil) icon on any row to open the modal:
-    * **Existing**: Update targets, CAGR %, or remarks for the existing analysis date.
+    * **Existing**: Update Best Entry, Status, targets, CAGR %, or remarks for the existing analysis date.
     * **New (History)**: Creates a new historical analysis record for that stock using today's date and a fresh live market price.
 * **Historical Analysis Date Dropdown**:
   * When a ticker has multiple analysis entries, the **Date of Analysis** column renders a dropdown selector.
-  * Switching the date dynamically displays the historical baseline price, scenario targets, and remarks recorded on that date, while the **Current Price** remains live.
+  * Switching the date dynamically displays the historical baseline price, Best Entry, Status, scenario targets, and remarks recorded on that date, while the **Current Price** remains live.
 
 ## Changing the scheduled run times
 

@@ -29,6 +29,10 @@ export default function AddStatusModal({
   // Remarks
   const [remarks, setRemarks] = useState('');
 
+  // Best Entry & Status
+  const [bestEntry, setBestEntry] = useState('');
+  const [status, setStatus] = useState('');
+
   // Edit switch: 'existing' | 'new'
   const [editModeType, setEditModeType] = useState('existing');
 
@@ -48,6 +52,8 @@ export default function AddStatusModal({
       setBearTarget('');
       setBearCagr('');
       setRemarks('');
+      setBestEntry('');
+      setStatus('');
       setEditModeType('existing');
       return;
     }
@@ -71,6 +77,8 @@ export default function AddStatusModal({
       setBearTarget(bear[0] || '');
       setBearCagr(bear[1] || '');
       setRemarks(editItem.remarks || '');
+      setBestEntry(editItem.best_entry !== undefined && editItem.best_entry !== null ? editItem.best_entry : '');
+      setStatus(editItem.status || '');
       setEditModeType('existing');
     }
   }, [isOpen, isEditMode, editItem]);
@@ -142,6 +150,8 @@ export default function AddStatusModal({
       symbol: symbol.trim(),
       name: stockName.trim(),
       price_of_analysis: priceOfAnalysis,
+      best_entry: bestEntry !== '' ? Number(bestEntry) : null,
+      status: status.trim(),
       currency: currency,
       base: [baseTarget.trim(), baseCagr.trim()],
       bull: [bullTarget.trim(), bullCagr.trim()],
@@ -299,6 +309,40 @@ export default function AddStatusModal({
               disabled
               readOnly
             />
+          </div>
+
+          {/* Best Entry & Status */}
+          <div className="row g-2 mb-3">
+            <div className="col-6">
+              <label className="form-label-custom">Best Entry</label>
+              <div className="input-group">
+                <span className="input-group-text bg-light text-muted">₹</span>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  placeholder="e.g. 1500"
+                  value={bestEntry}
+                  onChange={(e) => setBestEntry(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+            <div className="col-6">
+              <label className="form-label-custom">Status</label>
+              <select
+                className="form-select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                disabled={isSubmitting}
+              >
+                <option value="">Select Status...</option>
+                <option value="Buy">Buy</option>
+                <option value="Avoid">Avoid</option>
+                <option value="Hold">Hold</option>
+                <option value="Acc on dip">Acc on dip</option>
+              </select>
+            </div>
           </div>
 
           {/* Base: Target Price & Target CAGR */}

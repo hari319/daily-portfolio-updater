@@ -68,12 +68,22 @@ def add_stock_status(payload: dict[str, Any]) -> dict[str, Any]:
     bull = [str(bull[0]) if len(bull) > 0 else "", str(bull[1]) if len(bull) > 1 else ""]
     bear = [str(bear[0]) if len(bear) > 0 else "", str(bear[1]) if len(bear) > 1 else ""]
 
+    best_entry = payload.get("best_entry")
+    try:
+        best_entry_val = float(best_entry) if best_entry is not None and best_entry != "" else None
+    except (ValueError, TypeError):
+        best_entry_val = None
+
+    status_val = str(payload.get("status", "")).strip()
+
     entry: dict[str, Any] = {
         "id": uuid.uuid4().hex[:12],
         "symbol": symbol,
         "name": name,
         "date_of_analysis": date_str,
         "price_of_analysis": price_val,
+        "best_entry": best_entry_val,
+        "status": status_val,
         "currency": payload.get("currency", "INR"),
         "base": base,
         "bull": bull,
@@ -118,6 +128,16 @@ def update_stock_status(item_id: str, payload: dict[str, Any]) -> dict[str, Any]
             target_item["price_of_analysis"] = float(payload["price_of_analysis"])
         except (ValueError, TypeError):
             pass
+
+    if "best_entry" in payload:
+        best_val = payload["best_entry"]
+        try:
+            target_item["best_entry"] = float(best_val) if best_val is not None and best_val != "" else None
+        except (ValueError, TypeError):
+            target_item["best_entry"] = None
+
+    if "status" in payload:
+        target_item["status"] = str(payload.get("status", "")).strip()
 
     if "date_of_analysis" in payload and payload["date_of_analysis"]:
         target_item["date_of_analysis"] = str(payload["date_of_analysis"]).strip()

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Search, Layers, RefreshCw } from 'lucide-react';
+import { Plus, Search, Layers, RefreshCw, Filter } from 'lucide-react';
 import * as api from '../api';
 import StatusTable from './StatusTable';
 import AddStatusModal from './AddStatusModal';
@@ -8,6 +8,7 @@ export default function StatusTab({ showToast, isBusy, setIsBusy }) {
   const [items, setItems] = useState([]);
   const [liveQuotes, setLiveQuotes] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -69,16 +70,23 @@ export default function StatusTab({ showToast, isBusy, setIsBusy }) {
     }
   };
 
-  // Real-time search filtered by Ticker column
+  // Real-time search filtered by Ticker column and optional status dropdown
   const filteredItems = useMemo(() => {
     const term = searchTerm.trim().toUpperCase();
-    if (!term) return items;
+    const filter = (statusFilter || 'ALL').trim().toUpperCase();
+
     return items.filter((item) => {
       const sym = (item.symbol || '').toUpperCase();
       const name = (item.name || '').toUpperCase();
-      return sym.includes(term) || name.includes(term);
+      const matchesSearch = !term || sym.includes(term) || name.includes(term);
+
+      if (!matchesSearch) return false;
+
+      if (filter === 'ALL') return true;
+      const itemStatus = (item.status || '').trim().toUpperCase();
+      return itemStatus === filter;
     });
-  }, [items, searchTerm]);
+  }, [items, searchTerm, statusFilter]);
 
   const handleOpenAddModal = () => {
     setIsEditMode(false);
@@ -142,11 +150,11 @@ export default function StatusTab({ showToast, isBusy, setIsBusy }) {
 
   return (
     <div className="status-tab-container">
-      {/* Top Action Bar: Search input & Add button */}
+      {/* Top Action Bar: Search input, Status Filter, & Action buttons */}
       <div className="dashboard-card p-3 mb-4">
-        <div className="row g-3 align-items-center">
+        <div className="row g-2 g-md-3 align-items-center">
           {/* Search Box */}
-          <div className="col-12 col-md-7 col-lg-8">
+          <div className="col-12 col-md-5 col-lg-5">
             <div className="input-group">
               <span className="input-group-text bg-white border-end-0 text-muted">
                 <Search size={16} />
@@ -172,8 +180,29 @@ export default function StatusTab({ showToast, isBusy, setIsBusy }) {
             </div>
           </div>
 
+          {/* Status Filter Dropdown */}
+          <div className="col-12 col-sm-6 col-md-3 col-lg-3">
+            <div className="input-group">
+              <span className="input-group-text bg-white border-end-0 text-muted" title="Filter by Status">
+                <Filter size={15} />
+              </span>
+              <select
+                className="form-select border-start-0 ps-0"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filter by Status"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="Buy">Buy</option>
+                <option value="Acc on dip">Acc on dip</option>
+                <option value="Hold">Hold</option>
+                <option value="Avoid">Avoid</option>
+              </select>
+            </div>
+          </div>
+
           {/* Action Buttons */}
-          <div className="col-12 col-md-5 col-lg-4 d-flex justify-content-md-end gap-2">
+          <div className="col-12 col-sm-6 col-md-4 col-lg-4 d-flex justify-content-sm-end gap-2">
             <button
               type="button"
               className="btn btn-outline-secondary d-inline-flex align-items-center gap-1"
@@ -186,7 +215,7 @@ export default function StatusTab({ showToast, isBusy, setIsBusy }) {
             </button>
             <button
               type="button"
-              className="btn btn-primary d-inline-flex align-items-center gap-1 px-3 shadow-sm"
+              className="btn btn-primary d-inline-flex align-items-center gap-1 px-3 shadow-sm text-nowrap"
               onClick={handleOpenAddModal}
             >
               <Plus size={16} />
