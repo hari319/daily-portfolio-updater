@@ -31,6 +31,8 @@ STATUS_FILE = DATA_DIR / "status.json"
 PENDING_ADDITIONS_FILE = DATA_DIR / "pending_additions.json"
 STOCK_STATUS_FILE = DATA_DIR / "stock_status.json"
 QUOTES_CACHE_FILE = DATA_DIR / "quotes_cache.json"
+SCREENER_DIR = DATA_DIR / "screener"
+SCREENER_CACHE_FILE = DATA_DIR / "screener_cache.json"
 
 APP_LOG_FILE = LOG_DIR / "app.log"
 SCHEDULER_LOG_FILE = LOG_DIR / "scheduler.log"
@@ -39,5 +41,5 @@ ADDITIONS_LOG_FILE = LOG_DIR / "ticker_additions.log"
 
 def ensure_directories() -> None:
     """Create the config/data/log directories if they do not exist yet."""
-    for directory in (CONFIG_DIR, DATA_DIR, LOG_DIR):
+    for directory in (CONFIG_DIR, DATA_DIR, LOG_DIR, SCREENER_DIR):
         directory.mkdir(parents=True, exist_ok=True)

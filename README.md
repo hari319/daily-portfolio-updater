@@ -29,17 +29,18 @@ historical / past-day browsing.
 5. [Frontend Development](#frontend-development)
 6. [Adding and editing tickers](#adding-and-editing-tickers)
 7. [Stock Status & Analysis Scenarios](#stock-status--analysis-scenarios)
-8. [Changing the scheduled run times](#changing-the-scheduled-run-times)
-9. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
-10. [Stopping the scheduled task](#stopping-the-scheduled-task)
-11. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
-12. [EMA and colour logic](#ema-and-colour-logic)
-13. [Error handling and logging](#error-handling-and-logging)
-14. [Configuration reference](#configuration-reference)
-15. [HTTP API](#http-api)
-16. [Known limitations](#known-limitations)
-17. [Planned features](#planned-features)
-18. [Knowledge Graph & Architecture Map](docs/KNOWLEDGE_GRAPH.md)
+8. [Market Screener](#market-screener)
+9. [Changing the scheduled run times](#changing-the-scheduled-run-times)
+10. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
+11. [Stopping the scheduled task](#stopping-the-scheduled-task)
+12. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
+13. [EMA and colour logic](#ema-and-colour-logic)
+14. [Error handling and logging](#error-handling-and-logging)
+15. [Configuration reference](#configuration-reference)
+16. [HTTP API](#http-api)
+17. [Known limitations](#known-limitations)
+18. [Planned features](#planned-features)
+19. [Knowledge Graph & Architecture Map](docs/KNOWLEDGE_GRAPH.md)
 
 ---
 
@@ -234,6 +235,116 @@ The app includes a dedicated **Status** tab alongside the **Tracker** tab for tr
 * **Historical Analysis Date Dropdown**:
   * When a ticker has multiple analysis entries, the **Date of Analysis** column renders a dropdown selector.
   * Switching the date dynamically displays the historical baseline price, Best Entry, Status, scenario targets, and remarks recorded on that date, while the **Current Price** remains live.
+
+## Market Screener
+
+The app includes a dedicated **Screener** tab (third tab) to scan and inspect broad-market NSE stock data (>3,400 companies) fetched from Prime Screener (`bigbreakingwire.in`).
+
+### Key Features & Usage
+
+* **Manual Fetch Only**: The screener is never fetched automatically on app startup or tab switch. Fetching is triggered strictly on demand when you click **Fetch Data**.
+* **Automatic Daily `X-WP-Nonce` Management**:
+  * The application automatically extracts and caches the `X-WP-Nonce` directly from `bigbreakingwire.in` for the current day.
+  * You do **not** need to manually copy or paste nonces. The nonce is stored locally for the day, and a fresh one is automatically acquired when a new day arrives or if an existing token expires.
+  * An optional **Nonce Settings** panel remains available in the UI if you ever wish to view the active token or provide a manual override.
+* **Date Picker (Past 11 Trading Days)**:
+  * Select **Today / Latest** (default payload: `""`) or pick any specific date from the last 11 trading days (`"YYYY-MM-DD"`).
+* **Local Multi-Date Persistence**:
+  * Every fetched dataset is saved locally on disk under `data/screener/screener_<DATE>.json` and indexed in `data/screener_cache.json`.
+  * Use the **Saved Local Data** dropdown to switch between and review previously downloaded dates without re-fetching.
+* **Interactive Table & Sticky Columns**:
+  * **Sticky Columns**: The **Symbol** column (with clickable TradingView chart link and company name) and **Price** column stay frozen on horizontal scroll.
+  * **Column Selector (154 Columns)**: Click **Columns** to open the categorized popover (18 categories: Price, Volume, Moving Averages, Technicals, Supertrend, Breakouts, Performance, etc.) with search, quick presets ("Default", "All", "Clear"), and custom visibility toggles.
+  * **Symbol Search**: Instant text search matching specifically on the stock symbol.
+  * **Pagination**: Choose between 10, 20, 50, or 100 rows per page with page navigation controls.
+  * **Financial Color Coding**: Negative values appear in red (`#dc2626`), positive returns/changes in green (`#16a34a`), and signals/trends are styled with color-coded badges (`Bullish`, `Bearish`, `Neutral`).
+  * **Last Fetched Indicator**: Clearly displays the exact date, time, and record count of the active screener dataset.
+
+### Strategy Presets & Custom Multi-Rule Filters
+
+With 3,400+ stocks in the daily universe, manual scanning is time-consuming. The Screener provides **1-Click Strategy Presets** organized into high-conviction categories, alongside a **Custom Multi-Rule Builder**:
+
+#### 🔥 Explosive 1–2 Day Setups (Top 15–30 High-Probability Candidates)
+
+These filters target rapid multi-day momentum or same-day/next-day explosive follow-through:
+
+1. **`🚀 Institutional Blastoff` (1–2 Day Rocket)**:
+   * **Goal**: Detect heavy institutional block accumulation before a multi-day continuation move.
+   * **Formula**:
+     * `Highest Volume in 20 Sessions (is_highest_vol_20 == 1)`
+     * `Volume Ratio (RVOL) >= 2.0x` (more than double 20-day average)
+     * `Close Position in Range >= 85%` (closing near absolute session high)
+     * `Change % >= +2.5%`
+     * `Supertrend Direction == Bullish (1)`
+   * **Typical Yield**: **~20–30 stocks** out of 3,400+.
+
+2. **`🎯 Coiled Spring (VCP Squeeze)` (Day 1 of the Move)**:
+   * **Goal**: Catch the move right at origin (Day 1) before the general market notices.
+   * **Formula**:
+     * `5-Session Range % <= 6.0%` (extreme volatility contraction / supply drying up)
+     * `Volume Ratio (RVOL) >= 1.5x` (sudden volume explosion waking up)
+     * `Close Position in Range >= 80%` (buyers dominating the close)
+     * `Change % >= +2.0%`
+   * **Typical Yield**: **~10–20 stocks** out of 3,400+.
+
+3. **`⭐ Blue Sky ATH Breakout` (Zero Overhead Supply)**:
+   * **Goal**: Target stocks breaking within striking distance of all-time / 52-week highs with zero trapped overhead sellers.
+   * **Formula**:
+     * `Distance from 52-Week High <= 2.0%` (near blue-sky territory)
+     * `Volume Ratio (RVOL) >= 2.0x` (massive volume confirmation)
+     * `Change % >= +3.0%`
+     * `Close Position in Range >= 85%`
+   * **Typical Yield**: **~15–25 stocks** out of 3,400+.
+
+4. **`🏆 8/8 Perfect Quantitative Consensus`**:
+   * **Goal**: Maximum technical agreement across all internal quantitative indicators.
+   * **Formula**:
+     * `Confirmation Count == '8/8'` (100% agreement across Supertrend, MAs, RSI, MACD, Volume, and Trend Strength)
+     * `Volume Ratio (RVOL) >= 2.0x`
+     * `Close Position in Range >= 80%`
+   * **Typical Yield**: **~25–35 stocks** out of 3,400+.
+
+#### 📊 Classical Momentum & Positional Strategies
+
+1. **`⚡ BTST Surge` (Buy Today, Sell Tomorrow)**:
+   * **Goal**: Overnight gap-up and next-morning continuation.
+   * **Formula**: `Close Position in Range >= 80%`, `Change % >= +1.5%`, `RVOL >= 1.2x`, `Delivery % >= 30%`.
+   * **Typical Yield**: ~100–180 stocks.
+
+2. **`🚀 Swing Momentum Breakout` (3 to 20 Days)**:
+   * **Goal**: Capture strong trend leaders with aligned moving averages and momentum acceleration.
+   * **Formula**: `Price > SMA 20`, `Price > SMA 50`, `Supertrend == Bullish`, `RSI 14 >= 55`, `RVOL >= 1.0x`.
+   * **Typical Yield**: ~300–450 stocks.
+
+3. **`⭐ 52W High Breakout` (Momentum Leaders)**:
+   * **Goal**: Stocks within 5% of 52-week high with volume confirmation.
+   * **Formula**: `Distance from 52W High <= 5%`, `Change % > 0%`, `RVOL >= 1.2x`.
+   * **Typical Yield**: ~80–130 stocks.
+
+4. **`📉 Dip Buyer` (Uptrend Pullback)**:
+   * **Goal**: Low-risk pullback entries into strong macro uptrends.
+   * **Formula**: `Price > SMA 200` (macro bull intact), `Price < SMA 20` (pullback), `RSI 14 between 40 and 52`.
+   * **Typical Yield**: ~300–450 stocks.
+
+5. **`💎 Long-Term Compounders` (6 to 24+ Months)**:
+   * **Goal**: Multi-quarter relative strength and institutional backing.
+   * **Formula**: `Price > SMA 200`, `SMA 50 > SMA 200` (Golden Crossover), `1-Year Return % >= +15%`, `Distance from 52W High <= 20%`.
+   * **Typical Yield**: ~400–500 stocks.
+
+6. **`📦 High Delivery Accumulation`**:
+   * **Goal**: Smart money accumulation into demat accounts.
+   * **Formula**: `Delivery % >= 60%`, `RVOL >= 1.0x`, `Change % >= 0%`.
+   * **Typical Yield**: ~350–450 stocks.
+
+#### Custom Multi-Rule Filter Builder
+
+* Click **Custom Rule Builder** to create your own custom scan conditions.
+* **146 Technical & Fundamental Fields**: Filter by Moving Averages, RSI, MACD, ADX, ATR, Bollinger Bands, Delivery, Volatility, Supertrend, and Pivot Levels.
+* **Column-to-Column Comparisons**: Compare any field directly against another column (e.g. `Price > SMA 20`, `SMA 50 > SMA 200`).
+* **Flexible Operators**: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between (Range)`, and `contains`.
+* **Match Logic**: Toggle between `All Rules (AND)` and `Any Rule (OR)`.
+* **Save Custom Presets**: Click **Save as Preset** to store your custom rules in local storage with a custom name for instant 1-click access anytime.
+* **Strategy Explanation Modal**: Click the **(i)** icon on any preset to open an interactive modal explaining the rationale, exact trigger criteria, and why it works.
 
 ## Changing the scheduled run times
 
@@ -475,6 +586,9 @@ and `STOCKMON_LOG_DIR` environment variables (both processes must see the same v
 | `POST /api/stock-status` | Add a new stock status / scenario entry |
 | `PUT /api/stock-status/<id>` | Update an existing stock status entry |
 | `DELETE /api/stock-status/<id>` | Delete a stock status entry |
+| `GET /api/screener/data?date=...` | Get cached screener dataset and list of locally saved dates |
+| `POST /api/screener/fetch` | Execute manual screener fetch with `{nonce, date, search, per_page}` |
+| `GET /api/screener/detect-nonce` | Auto-detect current nonce from screener site |
 
 ## Known limitations
 

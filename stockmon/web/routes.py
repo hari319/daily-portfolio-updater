@@ -20,8 +20,14 @@ from flask import (
 
 from .. import status as status_store
 from ..config_manager import get_run_times, load_settings, set_run_times
-from ..errors import ValidationError
+from ..errors import DataFetchError, ValidationError
 from ..data_fetcher import fetch_ticker_quote
+from ..screener import (
+    auto_detect_nonce,
+    fetch_screener_data,
+    list_saved_screener_dates,
+    load_cached_screener,
+)
 from ..paths import BASE_DIR
 from ..portfolio import (
     PORTFOLIO_NAMES,
@@ -79,6 +85,11 @@ def _tables_payload(snapshot: dict[str, Any] | None = None, message: str = "") -
 @bp.app_errorhandler(ValidationError)
 def _handle_validation_error(exc: ValidationError):
     return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.app_errorhandler(DataFetchError)
+def _handle_data_fetch_error(exc: DataFetchError):
+    return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 @bp.route("/")
@@ -333,5 +344,54 @@ def api_stock_quotes():
                 results[sym] = {"symbol": sym, "error": str(exc), "price": None}
 
     return jsonify({"ok": True, "quotes": results})
+
+
+@bp.get("/api/screener/data")
+def api_screener_data():
+    date = request.args.get("date", "").strip()
+    data = load_cached_screener(date)
+    saved_dates = list_saved_screener_dates()
+    nonce_info = (data.get("nonce_info") if data else {})
+    return jsonify({
+        "ok": True,
+        "data": data,
+        "saved_dates": saved_dates,
+        "nonce_info": nonce_info,
+    })
+
+
+@bp.post("/api/screener/fetch")
+def api_screener_fetch():
+    payload = request.get_json(silent=True) or {}
+    nonce = payload.get("nonce", "").strip()
+    date = payload.get("date", "").strip()
+    search = payload.get("search", "").strip()
+    per_page = int(payload.get("per_page", 3489))
+
+    try:
+        data = fetch_screener_data(nonce=nonce, date=date, search=search, per_page=per_page)
+        saved_dates = list_saved_screener_dates()
+        return jsonify({
+            "ok": True,
+            "data": data,
+            "saved_dates": saved_dates,
+            "nonce_info": data.get("nonce_info", {}),
+            "message": f"Successfully loaded {data.get('total', len(data.get('items', [])))} stocks for {data.get('date', 'latest')}.",
+        })
+    except ValidationError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except DataFetchError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error during screener fetch")
+        return jsonify({"ok": False, "error": f"Internal server error: {exc}"}), 500
+
+
+@bp.get("/api/screener/detect-nonce")
+def api_screener_detect_nonce():
+    nonce = auto_detect_nonce()
+    if nonce:
+        return jsonify({"ok": True, "nonce": nonce})
+    return jsonify({"ok": False, "error": "Could not auto-detect nonce from website."}), 404
 
 

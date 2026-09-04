@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, Target } from 'lucide-react';
+import { Activity, Target, SlidersHorizontal } from 'lucide-react';
 import * as api from './api';
 import Header from './components/Header';
 import AddTickerPanel from './components/AddTickerPanel';
@@ -7,11 +7,12 @@ import SchedulePanel from './components/SchedulePanel';
 import ErrorsPanel from './components/ErrorsPanel';
 import PortfolioSection from './components/PortfolioSection';
 import StatusTab from './components/StatusTab';
+import ScreenerTab from './components/ScreenerTab';
 import Toast from './components/Toast';
 import Footer from './components/Footer';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('tracker'); // 'tracker' | 'status'
+  const [activeTab, setActiveTab] = useState('tracker'); // 'tracker' | 'status' | 'screener'
   const [snapshot, setSnapshot] = useState(null);
   const [runTimes, setRunTimes] = useState(['09:30', '11:30']);
   const [portfolioNames, setPortfolioNames] = useState(['BAPA', 'MADI']);
@@ -198,10 +199,18 @@ export default function App() {
           <Target size={16} />
           <span>Status</span>
         </button>
+        <button
+          type="button"
+          className={`tab-nav-item ${activeTab === 'screener' ? 'active' : ''}`}
+          onClick={() => setActiveTab('screener')}
+        >
+          <SlidersHorizontal size={16} />
+          <span>Screener</span>
+        </button>
       </div>
 
-      {/* Tab Content: Tracker vs Status */}
-      {activeTab === 'tracker' ? (
+      {/* Tab Content: Tracker vs Status vs Screener */}
+      {activeTab === 'tracker' && (
         <>
           {/* Control Panels: Add Ticker & Schedule */}
           <section className="row g-3 mb-4">
@@ -239,12 +248,18 @@ export default function App() {
             ))}
           </main>
         </>
-      ) : (
+      )}
+
+      {activeTab === 'status' && (
         <StatusTab
           showToast={showToast}
           isBusy={isBusy}
           setIsBusy={setIsBusy}
         />
+      )}
+
+      {activeTab === 'screener' && (
+        <ScreenerTab showToast={showToast} />
       )}
 
       {/* Footer */}

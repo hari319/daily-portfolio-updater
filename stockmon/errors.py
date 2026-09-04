@@ -12,9 +12,14 @@ class ValidationError(StockMonError):
 
 
 class DataFetchError(StockMonError):
-    """Raised when market data cannot be retrieved for a ticker."""
+    """Raised when market data cannot be retrieved for a ticker or service."""
 
-    def __init__(self, symbol: str, message: str) -> None:
-        super().__init__(f"{symbol}: {message}")
-        self.symbol = symbol
-        self.message = message
+    def __init__(self, symbol_or_message: str, message: str | None = None) -> None:
+        if message is not None:
+            self.symbol = symbol_or_message
+            self.message = message
+            super().__init__(f"{symbol_or_message}: {message}")
+        else:
+            self.symbol = ""
+            self.message = symbol_or_message
+            super().__init__(symbol_or_message)

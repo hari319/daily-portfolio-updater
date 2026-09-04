@@ -165,3 +165,21 @@ export function connectStatusStream({
     }
   };
 }
+
+export async function fetchScreenerData(date = '') {
+  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+  return request(`/api/screener/data${q}`);
+}
+
+export async function runScreenerFetch({ nonce, date = '', search = '', per_page = 3489 }) {
+  return sendJson('/api/screener/fetch', 'POST', {
+    nonce,
+    date,
+    search,
+    per_page,
+  });
+}
+
+export async function detectScreenerNonce() {
+  return request('/api/screener/detect-nonce');
+}
