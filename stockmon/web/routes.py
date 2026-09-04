@@ -28,6 +28,10 @@ from ..screener import (
     list_saved_screener_dates,
     load_cached_screener,
 )
+from ..multi_day_analyzer import (
+    analyze_multi_day_sequences,
+    sync_historical_dates,
+)
 from ..paths import BASE_DIR
 from ..portfolio import (
     PORTFOLIO_NAMES,
@@ -352,11 +356,28 @@ def api_screener_data():
     data = load_cached_screener(date)
     saved_dates = list_saved_screener_dates()
     nonce_info = (data.get("nonce_info") if data else {})
+    multi_day_summary = None
+
+    # Automatically enrich items with multi-day trajectory metrics
+    if data and data.get("items") and len(saved_dates) >= 2:
+        try:
+            analysis = analyze_multi_day_sequences(max_days=11)
+            if analysis and analysis.get("ok") and analysis.get("items_by_symbol"):
+                by_sym = analysis["items_by_symbol"]
+                for item in data["items"]:
+                    sym = item.get("symbol")
+                    if sym and sym in by_sym:
+                        item.update(by_sym[sym])
+                multi_day_summary = analysis.get("setups_summary")
+        except Exception as exc:
+            logger.debug("Automatic multi-day enrichment skipped: %s", exc)
+
     return jsonify({
         "ok": True,
         "data": data,
         "saved_dates": saved_dates,
         "nonce_info": nonce_info,
+        "multi_day_summary": multi_day_summary,
     })
 
 
@@ -371,11 +392,27 @@ def api_screener_fetch():
     try:
         data = fetch_screener_data(nonce=nonce, date=date, search=search, per_page=per_page)
         saved_dates = list_saved_screener_dates()
+
+        multi_day_summary = None
+        if data and data.get("items") and len(saved_dates) >= 2:
+            try:
+                analysis = analyze_multi_day_sequences(max_days=11, force_recompute=True)
+                if analysis and analysis.get("ok") and analysis.get("items_by_symbol"):
+                    by_sym = analysis["items_by_symbol"]
+                    for item in data["items"]:
+                        sym = item.get("symbol")
+                        if sym and sym in by_sym:
+                            item.update(by_sym[sym])
+                    multi_day_summary = analysis.get("setups_summary")
+            except Exception as exc:
+                logger.debug("Multi-day enrichment after fetch skipped: %s", exc)
+
         return jsonify({
             "ok": True,
             "data": data,
             "saved_dates": saved_dates,
             "nonce_info": data.get("nonce_info", {}),
+            "multi_day_summary": multi_day_summary,
             "message": f"Successfully loaded {data.get('total', len(data.get('items', [])))} stocks for {data.get('date', 'latest')}.",
         })
     except ValidationError as exc:
@@ -393,5 +430,31 @@ def api_screener_detect_nonce():
     if nonce:
         return jsonify({"ok": True, "nonce": nonce})
     return jsonify({"ok": False, "error": "Could not auto-detect nonce from website."}), 404
+
+
+@bp.post("/api/screener/sync-history")
+def api_screener_sync_history():
+    payload = request.get_json(silent=True) or {}
+    max_days = int(payload.get("max_days", 11))
+    target_dates = payload.get("target_dates")
+    try:
+        res = sync_historical_dates(target_dates=target_dates, max_days=max_days)
+        return jsonify(res)
+    except Exception as exc:
+        logger.exception("Error syncing historical screener dates")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.get("/api/screener/multi-day-analysis")
+def api_screener_multi_day_analysis():
+    max_days = int(request.args.get("max_days", 11))
+    force = request.args.get("force", "").lower() in ("true", "1")
+    try:
+        res = analyze_multi_day_sequences(max_days=max_days, force_recompute=force)
+        return jsonify(res)
+    except Exception as exc:
+        logger.exception("Error during multi-day sequence analysis")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
 
 

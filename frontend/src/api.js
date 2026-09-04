@@ -183,3 +183,14 @@ export async function runScreenerFetch({ nonce, date = '', search = '', per_page
 export async function detectScreenerNonce() {
   return request('/api/screener/detect-nonce');
 }
+
+export async function syncScreenerHistory(maxDays = 11, targetDates = null) {
+  return sendJson('/api/screener/sync-history', 'POST', {
+    max_days: maxDays,
+    target_dates: targetDates,
+  });
+}
+
+export async function fetchMultiDayAnalysis(maxDays = 11) {
+  return request(`/api/screener/multi-day-analysis?max_days=${maxDays}`);
+}

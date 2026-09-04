@@ -1,50 +1,44 @@
-# Portfolio and Stock Monitor (BAPA &amp; MADI)
+# Portfolio and Stock Monitor (BAPA & MADI)
 
-A local desktop application that tracks two NSE/BSE stock portfolios — **BAPA** and **MADI** — and
-flags, at a glance, every EMA the current price has fallen below.
+A comprehensive local desktop application for tracking NSE/BSE stock portfolios, conducting scenario-based fundamental/technical valuation tracking, and scanning the broad Indian stock market (>3,400 companies) with predictive multi-day momentum indicators.
 
-The app features a modern **React + Bootstrap 5** single-page interface and opens as a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/)) or in any browser. For each ticker it computes the **9, 21, 50, 100 and 200 period EMA** on
-both the **daily** and the **weekly** timeframe (10 values per ticker).
-
-* **Signal Column**: Shows **`SELL`** (in red) when the price is below the daily 200 EMA, and **`HOLD`** (in green) otherwise.
-* **Priority Sorting**: Tickers below the daily 200 EMA appear first (highest priority), followed by 100, 50, 21, and 9 EMA. Within the same priority level, tickers are sorted **alphabetically**.
-* **Stacked EMA Values**: Each EMA column shows daily (**D:**) on top and weekly (**W:**) below. An EMA value is displayed **only when the current price is below it on that timeframe**, rendered in **red**. If the price is above an EMA, the row stays blank.
-* **N/A for Missing Data**: If a specific EMA lacks sufficient history (e.g. 200-week on a recent listing), it shows `N/A` in muted grey while other available EMAs continue to display normally.
-* **NSE/BSE Auto-Switch**: If a ticker on one exchange has thin history (< 400 daily bars), the app automatically checks the alternate exchange (`.NS` ↔ `.BO`) and uses whichever has more history.
-* **Stock Company Names**: The company name is fetched from Yahoo Finance and displayed directly under each ticker link.
-* **Collapsible Tables**: Each portfolio table has a compact toggle button in its header to collapse or expand the table.
-* **Weekday Schedule & Top-Level Popup**: Scheduled refreshes run twice daily on **weekdays (Monday to Friday)**, popping up on top of all open windows as a reminder.
-
-The app shows **live data only** — current price and current EMAs. There is deliberately no
-historical / past-day browsing.
+The application features a modern **React + Bootstrap 5** interface served inside a **native desktop window** (powered by [pywebview](https://pywebview.flowrl.com/)) or any web browser.
 
 ---
 
-## Table of contents
+## 📚 Feature Documentation by Tab
 
-1. [How it works](#how-it-works)
-2. [Project structure](#project-structure)
-3. [Setup](#setup)
-4. [Running the app](#running-the-app)
+Detailed feature guides, formulas, screening criteria, and workflows have been modularized by application tab:
+
+| Tab | Documentation | Description |
+| :--- | :--- | :--- |
+| **Tab 1: Tracker** | [**Portfolio Monitor Guide**](docs/TAB1_PORTFOLIO_MONITOR.md) | Multi-portfolio tracking (BAPA & MADI), 10 stacked Daily/Weekly EMAs, priority sorting, SELL/HOLD signals, NSE/BSE auto-switching, and ticker management. |
+| **Tab 2: Status** | [**Stock Status & Scenario Analysis**](docs/TAB2_STOCK_STATUS.md) | Valuation journal, Base/Bull/Bear targets & CAGR %, Best Entry tracking, live price comparisons, and multi-date analysis versioning. |
+| **Tab 3: Screener** | [**Market Screener & Predictive Analysis**](docs/TAB3_MARKET_SCREENER.md) | Broad-market scanning (>3,400 NSE stocks), automated daily `X-WP-Nonce` lifecycle, 154-column table, 1-click strategy presets, custom filter builder, and multi-day trajectory engine. |
+| **Architecture** | [**Knowledge Graph & Module Map**](docs/KNOWLEDGE_GRAPH.md) | Complete codebase architecture, component interactions, data stores, and developer onboarding reference. |
+
+---
+
+## Table of Contents
+
+1. [How It Works](#how-it-works)
+2. [Project Structure](#project-structure)
+3. [Setup & Installation](#setup--installation)
+4. [Running the Application](#running-the-application)
 5. [Frontend Development](#frontend-development)
-6. [Adding and editing tickers](#adding-and-editing-tickers)
-7. [Stock Status & Analysis Scenarios](#stock-status--analysis-scenarios)
-8. [Market Screener](#market-screener)
-9. [Changing the scheduled run times](#changing-the-scheduled-run-times)
-10. [Windows Task Scheduler setup](#windows-task-scheduler-setup)
-11. [Stopping the scheduled task](#stopping-the-scheduled-task)
-12. [How the scheduler notifies the app](#how-the-scheduler-notifies-the-app)
-13. [EMA and colour logic](#ema-and-colour-logic)
-14. [Error handling and logging](#error-handling-and-logging)
-15. [Configuration reference](#configuration-reference)
-16. [HTTP API](#http-api)
-17. [Known limitations](#known-limitations)
-18. [Planned features](#planned-features)
-19. [Knowledge Graph & Architecture Map](docs/KNOWLEDGE_GRAPH.md)
+6. [Tab Overview Summaries](#tab-overview-summaries)
+   - [Tab 1: Portfolio Monitor (Tracker)](#tab-1-portfolio-monitor-tracker)
+   - [Tab 2: Stock Status & Scenarios](#tab-2-stock-status--scenarios)
+   - [Tab 3: Market Screener & Predictive Analysis](#tab-3-market-screener--predictive-analysis)
+7. [Scheduled Runs & Windows Task Scheduler](#scheduled-runs--windows-task-scheduler)
+8. [Configuration Reference](#configuration-reference)
+9. [Error Handling & Logging](#error-handling--logging)
+10. [HTTP API Reference](#http-api-reference)
+11. [Known Limitations & Planned Features](#known-limitations--planned-features)
 
 ---
 
-## How it works
+## How It Works
 
 ```
 config/portfolios.json ──┐
@@ -62,13 +56,14 @@ config/settings.json  ───┤
                                          (only if no window is already open)
 ```
 
-* **Prices/history** come from `yfinance`. NSE symbols use the `.NS` suffix, BSE uses `.BO`.
-* **Weekly candles** are derived by resampling the daily history (Friday-anchored), so only one
-  network request per ticker is needed and the in-progress week reflects the live price.
-* **Two processes, one set of files.** The Flask app and the Windows scheduled task never talk
-  directly; they share `data/snapshot.json` and `data/status.json`.
+* **Prices & Historical Bars**: Fetched via `yfinance`. NSE symbols use `.NS`, BSE symbols use `.BO`.
+* **Weekly Candles**: Resampled from daily history (Friday-anchored) for speed and live price consistency.
+* **Shared File State**: Flask and scheduled tasks communicate via atomic JSON files (`data/snapshot.json` and `data/status.json`).
+* **Real-Time UI Updates**: Open desktop windows receive Server-Sent Events (SSE) from Flask whenever data updates.
 
-## Project structure
+---
+
+## Project Structure
 
 ```
 Daily Updater/
@@ -78,76 +73,77 @@ Daily Updater/
 ├── requirements.txt
 ├── config.template.json       # Template for config/settings.json
 ├── portfolios.template.json   # Template for config/portfolios.json
+├── docs/                      # Modular documentation by application tab
+│   ├── TAB1_PORTFOLIO_MONITOR.md
+│   ├── TAB2_STOCK_STATUS.md
+│   ├── TAB3_MARKET_SCREENER.md
+│   └── KNOWLEDGE_GRAPH.md
 ├── frontend/                  # React + Bootstrap 5 frontend (Vite)
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── dist/                  # Production build served by Flask
 │   └── src/                   # React components, styles, and API client
-├── docs/
-│   └── KNOWLEDGE_GRAPH.md     # Architectural map & module guide for developers/agents
-├── stockmon/
-│   ├── paths.py               # Where config/data/logs live (env-overridable)
-│   ├── jsonstore.py           # Atomic JSON read/write shared by both processes
+├── stockmon/                  # Python backend package
+│   ├── paths.py               # Config/data/log path resolution
+│   ├── jsonstore.py           # Thread-safe atomic JSON store
 │   ├── logging_config.py      # Rotating file + console logging
-│   ├── errors.py              # ValidationError / DataFetchError
-│   ├── config_manager.py      # settings.json (schedule, EMA periods, UI options)
-│   ├── portfolio.py           # Ticker validation, portfolios, TradingView links, add-log
-│   ├── data_fetcher.py        # yfinance access with retries and graceful failures
-│   ├── ema.py                 # Weekly resampling + EMA computation and data checks
-│   ├── service.py             # Orchestration: fetch → EMAs → snapshot → status
-│   ├── status.py              # The "new data available" signal (version counter)
-│   └── web/
-│       ├── __init__.py        # Flask application factory (serves React build)
-│       └── routes.py          # REST API endpoints and SSE stream
-├── scripts/
-│   ├── run_scheduled.ps1      # What Task Scheduler runs
-│   ├── run_scheduled.bat      # .bat wrapper around the above
-│   └── register_task.ps1      # Creates/updates the task from config/settings.json
-├── config/                    # Generated on first run (settings.json, portfolios.json)
-├── data/                      # Generated: snapshot.json, status.json, pending_additions.json
-└── logs/                      # Generated: app.log, scheduler.log, ticker_additions.log
+│   ├── config_manager.py      # settings.json manager
+│   ├── portfolio.py           # Portfolios, ticker validation, TradingView links
+│   ├── data_fetcher.py        # yfinance integration with retry backoff
+│   ├── ema.py                 # EMA calculations & weekly resampling
+│   ├── screener.py            # Prime screener API client & daily nonce handling
+│   ├── multi_day_analyzer.py  # Multi-day chronological sequence engine
+│   ├── service.py             # Orchestration service
+│   ├── status.py              # Version counter and update signaling
+│   └── web/                   # Flask server, routes, and SSE streaming
+├── scripts/                   # Windows Task Scheduler automation scripts
+│   ├── register_task.ps1      # Registers/updates task from settings.json
+│   ├── run_scheduled.ps1      # PowerShell execution wrapper
+│   └── run_scheduled.bat      # Batch file execution wrapper
+├── config/                    # Local configuration (settings.json, portfolios.json)
+├── data/                      # Local data stores, screener cache, and quotes cache
+└── logs/                      # Application, scheduler, and ticker audit logs
 ```
 
-## Setup
+---
 
-Requires **Python 3.10+** on Windows. **No API keys are required** — `yfinance` uses public Yahoo
-Finance endpoints. The desktop window is provided by
-[pywebview](https://pywebview.flowrl.com/) (installed automatically with `pip install -r requirements.txt`).
+## Setup & Installation
+
+Requires **Python 3.10+** on Windows. **No API keys are required** — public endpoints are utilized. The desktop window is powered by [pywebview](https://pywebview.flowrl.com/).
 
 ```powershell
 cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
 
+# Create and activate virtual environment
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-`config/settings.json` and `config/portfolios.json` are created automatically on first run from the
-built-in defaults (the two `*.template.json` files in the project root document the same shape and
-can be copied into `config/` if you prefer to pre-seed them).
+On first run, `config/settings.json` and `config/portfolios.json` will be automatically generated from the template defaults.
 
-## Running the app
+---
+
+## Running the Application
 
 ```powershell
-.\.venv\Scripts\python.exe app.py                 # opens a native desktop window
-.\.venv\Scripts\python.exe app.py --port 8000     # different port
-.\.venv\Scripts\python.exe app.py --browser       # open in the system browser instead
-.\.venv\Scripts\python.exe app.py --debug         # browser mode with auto-reload for development
+# Default: Launch as a native desktop window (1200 x 800)
+.\.venv\Scripts\python.exe app.py
+
+# Optional: Run on a custom port
+.\.venv\Scripts\python.exe app.py --port 8000
+
+# Optional: Open in your default web browser instead of desktop window
+.\.venv\Scripts\python.exe app.py --browser
+
+# Optional: Development mode with Flask auto-reload
+.\.venv\Scripts\python.exe app.py --debug
 ```
 
-By default the app opens as a **native desktop window** (1200 × 800) via
-[pywebview](https://pywebview.flowrl.com/). Flask runs in a background thread and serves
-the UI inside the window. Closing the window stops the app.
+If no portfolio data has been fetched yet, click **Refresh now** in the UI header (or run `python scheduled_run.py` once) to populate the tables.
 
-Use `--browser` to fall back to the original behaviour (opens in the system browser at
-`http://127.0.0.1:5000`). Use `--debug` for Flask auto-reload during development (also opens in the
-browser).
+---
 
-If no data has been fetched yet, click **Refresh now** (or run `python scheduled_run.py` once) to
-populate the tables.
-
-Each ticker name in the table is a hyperlink that opens that symbol's **TradingView chart** in a new
-tab (`NSE:RELIANCE` / `BSE:500325`), with the **company name** displayed directly below the symbol.
 ## Frontend Development
 
 The frontend is built with **React**, **Bootstrap 5**, and **Lucide Icons** using **Vite**.
@@ -155,466 +151,166 @@ The frontend is built with **React**, **Bootstrap 5**, and **Lucide Icons** usin
 ```powershell
 cd frontend
 
-# Install dependencies (first time only)
+# Install npm dependencies (first time only)
 npm install
 
-# Start Vite hot-reload development server (proxies /api to Flask at 127.0.0.1:5000)
+# Start Vite dev server with hot-reload (proxies /api to Flask on port 5000)
 npm run dev
 
-# Build production bundle into frontend/dist/ (served by Flask and pywebview desktop window)
+# Compile production bundle into frontend/dist/ (served by Flask)
 npm run build
 ```
 
 ---
 
-## Adding and editing tickers
+## Tab Overview Summaries
 
-**Through the UI** — pick the portfolio, type the symbol and click **Add &amp; fetch**:
+### Tab 1: Portfolio Monitor (Tracker)
+*Full details in [docs/TAB1_PORTFOLIO_MONITOR.md](docs/TAB1_PORTFOLIO_MONITOR.md)*
 
-* Plain symbols get the default suffix (`.NS`) automatically — `CARTRADE` becomes `CARTRADE.NS`.
-  Type `500325.BO` for a BSE listing.
-* **Real-time duplicate check**: As you type a symbol into the box, the UI immediately alerts you if
-  that stock is already in the selected portfolio (or another portfolio).
-* The symbol format is validated, duplicates within a portfolio are rejected, and the ticker is
-  **fetched immediately** (including the live company name). If `yfinance` returns nothing
-  (typo, delisted, network down) the ticker is **not** added and the reason is shown in the UI.
-* On success the row is inserted into the live table right away — you do not wait for the next
-  scheduled run.
-* The addition is also **logged** to `logs/ticker_additions.log` and queued in
-  `data/pending_additions.json`. The next scheduled run consumes that queue, records
-  *"Picked up N newly added ticker(s)"* in `logs/scheduler.log`, and refreshes the new ticker along
-  with the rest of the portfolio.
-* The `×` button at the end of a row removes that ticker from the portfolio.
+* **Portfolio Separation**: Monitors two distinct portfolios (**BAPA** and **MADI**).
+* **Dual Timeframe EMAs**: Tracks the **9, 21, 50, 100, and 200 EMA** across both **Daily (D:)** and **Weekly (W:)** timeframes (10 values per ticker).
+* **Display Rule**: Values are rendered in **red** only when the current price is below that EMA; otherwise, the space remains blank.
+* **Priority Sorting**: Tickers breaching the 200 daily EMA appear at the very top (highest priority alert), followed by 100, 50, 21, and 9 EMA. Within the same priority, tickers sort alphabetically.
+* **Signal Badge**: Clearly displays **`SELL`** (red) if below the daily 200 EMA, and **`HOLD`** (green) if holding above.
+* **Smart History Switching**: Automatically checks alternate exchanges (`.NS` ↔ `.BO`) if a symbol has fewer than 400 trading bars.
+* **Ticker CRUD**: Add and remove tickers directly from the UI with real-time symbol validation and duplicate checks.
 
-**By editing the file** — `config/portfolios.json`:
+---
 
-```json
-{
-  "BAPA": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS"],
-  "MADI": ["INFY.NS", "ITC.NS", "CARTRADE.NS"]
-}
-```
+### Tab 2: Stock Status & Scenarios
+*Full details in [docs/TAB2_STOCK_STATUS.md](docs/TAB2_STOCK_STATUS.md)*
 
-Invalid entries are logged and skipped rather than crashing the app. Click **Refresh now** after
-editing the file by hand.
+* **Valuation Scenarios**: Record target price and expected CAGR (%) across **Base**, **Bull**, and **Bear** business cases.
+* **Best Entry Tracking**: Specify target buy zones; the UI displays live percentage distances from the current price to your ideal entry price.
+* **Status Badges**: Color-coded investment stances (`Buy`, `Avoid`, `Hold`, `Acc on dip`).
+* **Multi-History Versioning**: Keep an audit trail of past analyses; switch between dates via the Date of Analysis dropdown to inspect how your thesis evolved over time.
+* **Live Quotes & Local Cache**: Live market prices update on demand with background caching in `data/quotes_cache.json`.
 
-## Stock Status & Analysis Scenarios
+---
 
-The app includes a dedicated **Status** tab alongside the **Tracker** tab for tracking fundamental & technical stock valuation targets (Base, Bull, Bear) across analysis dates.
+### Tab 3: Market Screener & Predictive Analysis
+*Full details in [docs/TAB3_MARKET_SCREENER.md](docs/TAB3_MARKET_SCREENER.md)*
 
-### Key Features & Usage
+* **Broad Market Universe**: Scan >3,400 NSE companies on demand from Prime Screener (`bigbreakingwire.in`).
+* **Automated Daily Nonce**: Automatically discovers, caches, and rotates the required `X-WP-Nonce` daily.
+* **154-Column Table**: Categorized column selector with frozen sticky columns, pagination, and TradingView chart links.
+* **Multi-Day Sequence Analyzer**: Analyzes up to 11 chronological daily trading sessions to calculate predictive trajectory indicators:
+  * `Accumulation Score (0–100)`: Quantifies institutional accumulation and flat-base coiling.
+  * `Signal Freshness`: Pinpoints whether a breakout or trend flip occurred on Day 0/1 or is stale.
+  * `VCP Compression Ratio`: Measures volatility contraction prior to expansion.
+* **1-Click Strategy Presets**:
+  * **Predictive Trajectory**: *Silent Accumulation*, *Fresh Signal Ignition*, *Multi-Day VCP Breakout*, *Staircase Buying*.
+  * **Explosive 1–2 Day Setups**: *Institutional Blastoff*, *Coiled Spring Squeeze*, *Blue Sky ATH*, *8/8 Consensus*.
+  * **Classical Momentum & Positional**: *BTST Surge*, *Swing Breakout*, *52W High*, *Dip Buyer*, *Compounders*, *High Delivery*.
+* **Custom Filter Builder**: Multi-rule filter builder supporting 146 technical fields, column-to-column comparisons, and custom preset saving.
 
-* **Tab Navigation**: Toggle between the portfolio **Tracker** (EMA monitor) and **Status** (stock scenarios table).
-* **Live Search**: Type into the search box at the top to filter status records by ticker or company name in real time.
-* **Adding a Stock Analysis**:
-  1. Click **+ Add Stock** in the Status tab.
-  2. Enter the ticker symbol (e.g. `INFY` or `TATAMOTORS.NS`) and click **Fetch**. This retrieves the company name and current market price from Yahoo Finance as your baseline **Price of Analysis**.
-  3. Enter optional **Best Entry** price and choose a **Status** stance (`Buy`, `Avoid`, `Hold`, `Acc on dip`).
-  4. Enter **Target Price** and **Target CAGR (%)** for the **Base**, **Bull**, and **Bear** scenarios.
-  5. Add optional **Remarks** (thesis notes, catalysts, stoploss) and click **Submit**. The entry is automatically saved with the current date.
-* **Best Entry & Status Columns**:
-  * **Best Entry**: Displays your target purchase price alongside a color-coded percentage badge (`+X.X%` / `-X.X%`) comparing the live Current Price to the Best Entry price, using the exact same calculation and badge styling as Current Price.
-  * **Status**: Color-coded indicator badge for quick orientation:
-    * `Buy` — green
-    * `Avoid` — red
-    * `Hold` — yellow
-    * `Acc on dip` — light green
-  * **Actions Column**: Placed conveniently next to the Best Entry column for quick editing or deletion.
-* **Remarks Display & Collapsible Preview**:
-  * The Remarks column renders multi-line text with exact whitespace, line breaks, and bullet formatting matching the input text field.
-  * Collapsed by default showing a clean preview snippet; click **Show more** to expand and **Show less** to collapse.
-* **Live Current Price & Timestamp**:
-  * Displays the live stock price in real time with the date & time of the quote underneath.
-  * Shows a color-coded percentage badge (`+X.X%` / `-X.X%`) comparing the current live price against the baseline analysis price.
-  * **Quote Caching & Fallback**: Quotes are cached locally in `data/quotes_cache.json` (with max 2 retry attempts). If a live quote fails or times out, the last known stored price and its timestamp are displayed seamlessly.
-* **Refresh Prices Button**: Located in the Status tab to update live market quotes and timestamps for all analysed stocks on demand. *(Note: The header **Refresh now** button remains dedicated to recomputing the Tracker portfolio EMAs).*
-* **Row Editing & Multi-History Records**:
-  * Click the **Edit** (pencil) icon on any row to open the modal:
-    * **Existing**: Update Best Entry, Status, targets, CAGR %, or remarks for the existing analysis date.
-    * **New (History)**: Creates a new historical analysis record for that stock using today's date and a fresh live market price.
-* **Historical Analysis Date Dropdown**:
-  * When a ticker has multiple analysis entries, the **Date of Analysis** column renders a dropdown selector.
-  * Switching the date dynamically displays the historical baseline price, Best Entry, Status, scenario targets, and remarks recorded on that date, while the **Current Price** remains live.
+---
 
-## Market Screener
+## Scheduled Runs & Windows Task Scheduler
 
-The app includes a dedicated **Screener** tab (third tab) to scan and inspect broad-market NSE stock data (>3,400 companies) fetched from Prime Screener (`bigbreakingwire.in`).
+Scheduled updates run twice daily on **weekdays (Monday–Friday)**.
 
-### Key Features & Usage
+### Registering or Updating the Task
+The schedule times (default: **09:30** and **11:30**) can be configured directly from the UI or in `config/settings.json`. Saving times in the UI automatically synchronizes the Windows Task Scheduler.
 
-* **Manual Fetch Only**: The screener is never fetched automatically on app startup or tab switch. Fetching is triggered strictly on demand when you click **Fetch Data**.
-* **Automatic Daily `X-WP-Nonce` Management**:
-  * The application automatically extracts and caches the `X-WP-Nonce` directly from `bigbreakingwire.in` for the current day.
-  * You do **not** need to manually copy or paste nonces. The nonce is stored locally for the day, and a fresh one is automatically acquired when a new day arrives or if an existing token expires.
-  * An optional **Nonce Settings** panel remains available in the UI if you ever wish to view the active token or provide a manual override.
-* **Date Picker (Past 11 Trading Days)**:
-  * Select **Today / Latest** (default payload: `""`) or pick any specific date from the last 11 trading days (`"YYYY-MM-DD"`).
-* **Local Multi-Date Persistence**:
-  * Every fetched dataset is saved locally on disk under `data/screener/screener_<DATE>.json` and indexed in `data/screener_cache.json`.
-  * Use the **Saved Local Data** dropdown to switch between and review previously downloaded dates without re-fetching.
-* **Interactive Table & Sticky Columns**:
-  * **Sticky Columns**: The **Symbol** column (with clickable TradingView chart link and company name) and **Price** column stay frozen on horizontal scroll.
-  * **Column Selector (154 Columns)**: Click **Columns** to open the categorized popover (18 categories: Price, Volume, Moving Averages, Technicals, Supertrend, Breakouts, Performance, etc.) with search, quick presets ("Default", "All", "Clear"), and custom visibility toggles.
-  * **Symbol Search**: Instant text search matching specifically on the stock symbol.
-  * **Pagination**: Choose between 10, 20, 50, or 100 rows per page with page navigation controls.
-  * **Financial Color Coding**: Negative values appear in red (`#dc2626`), positive returns/changes in green (`#16a34a`), and signals/trends are styled with color-coded badges (`Bullish`, `Bearish`, `Neutral`).
-  * **Last Fetched Indicator**: Clearly displays the exact date, time, and record count of the active screener dataset.
-
-### Strategy Presets & Custom Multi-Rule Filters
-
-With 3,400+ stocks in the daily universe, manual scanning is time-consuming. The Screener provides **1-Click Strategy Presets** organized into high-conviction categories, alongside a **Custom Multi-Rule Builder**:
-
-#### 🔥 Explosive 1–2 Day Setups (Top 15–30 High-Probability Candidates)
-
-These filters target rapid multi-day momentum or same-day/next-day explosive follow-through:
-
-1. **`🚀 Institutional Blastoff` (1–2 Day Rocket)**:
-   * **Goal**: Detect heavy institutional block accumulation before a multi-day continuation move.
-   * **Formula**:
-     * `Highest Volume in 20 Sessions (is_highest_vol_20 == 1)`
-     * `Volume Ratio (RVOL) >= 2.0x` (more than double 20-day average)
-     * `Close Position in Range >= 85%` (closing near absolute session high)
-     * `Change % >= +2.5%`
-     * `Supertrend Direction == Bullish (1)`
-   * **Typical Yield**: **~20–30 stocks** out of 3,400+.
-
-2. **`🎯 Coiled Spring (VCP Squeeze)` (Day 1 of the Move)**:
-   * **Goal**: Catch the move right at origin (Day 1) before the general market notices.
-   * **Formula**:
-     * `5-Session Range % <= 6.0%` (extreme volatility contraction / supply drying up)
-     * `Volume Ratio (RVOL) >= 1.5x` (sudden volume explosion waking up)
-     * `Close Position in Range >= 80%` (buyers dominating the close)
-     * `Change % >= +2.0%`
-   * **Typical Yield**: **~10–20 stocks** out of 3,400+.
-
-3. **`⭐ Blue Sky ATH Breakout` (Zero Overhead Supply)**:
-   * **Goal**: Target stocks breaking within striking distance of all-time / 52-week highs with zero trapped overhead sellers.
-   * **Formula**:
-     * `Distance from 52-Week High <= 2.0%` (near blue-sky territory)
-     * `Volume Ratio (RVOL) >= 2.0x` (massive volume confirmation)
-     * `Change % >= +3.0%`
-     * `Close Position in Range >= 85%`
-   * **Typical Yield**: **~15–25 stocks** out of 3,400+.
-
-4. **`🏆 8/8 Perfect Quantitative Consensus`**:
-   * **Goal**: Maximum technical agreement across all internal quantitative indicators.
-   * **Formula**:
-     * `Confirmation Count == '8/8'` (100% agreement across Supertrend, MAs, RSI, MACD, Volume, and Trend Strength)
-     * `Volume Ratio (RVOL) >= 2.0x`
-     * `Close Position in Range >= 80%`
-   * **Typical Yield**: **~25–35 stocks** out of 3,400+.
-
-#### 📊 Classical Momentum & Positional Strategies
-
-1. **`⚡ BTST Surge` (Buy Today, Sell Tomorrow)**:
-   * **Goal**: Overnight gap-up and next-morning continuation.
-   * **Formula**: `Close Position in Range >= 80%`, `Change % >= +1.5%`, `RVOL >= 1.2x`, `Delivery % >= 30%`.
-   * **Typical Yield**: ~100–180 stocks.
-
-2. **`🚀 Swing Momentum Breakout` (3 to 20 Days)**:
-   * **Goal**: Capture strong trend leaders with aligned moving averages and momentum acceleration.
-   * **Formula**: `Price > SMA 20`, `Price > SMA 50`, `Supertrend == Bullish`, `RSI 14 >= 55`, `RVOL >= 1.0x`.
-   * **Typical Yield**: ~300–450 stocks.
-
-3. **`⭐ 52W High Breakout` (Momentum Leaders)**:
-   * **Goal**: Stocks within 5% of 52-week high with volume confirmation.
-   * **Formula**: `Distance from 52W High <= 5%`, `Change % > 0%`, `RVOL >= 1.2x`.
-   * **Typical Yield**: ~80–130 stocks.
-
-4. **`📉 Dip Buyer` (Uptrend Pullback)**:
-   * **Goal**: Low-risk pullback entries into strong macro uptrends.
-   * **Formula**: `Price > SMA 200` (macro bull intact), `Price < SMA 20` (pullback), `RSI 14 between 40 and 52`.
-   * **Typical Yield**: ~300–450 stocks.
-
-5. **`💎 Long-Term Compounders` (6 to 24+ Months)**:
-   * **Goal**: Multi-quarter relative strength and institutional backing.
-   * **Formula**: `Price > SMA 200`, `SMA 50 > SMA 200` (Golden Crossover), `1-Year Return % >= +15%`, `Distance from 52W High <= 20%`.
-   * **Typical Yield**: ~400–500 stocks.
-
-6. **`📦 High Delivery Accumulation`**:
-   * **Goal**: Smart money accumulation into demat accounts.
-   * **Formula**: `Delivery % >= 60%`, `RVOL >= 1.0x`, `Change % >= 0%`.
-   * **Typical Yield**: ~350–450 stocks.
-
-#### Custom Multi-Rule Filter Builder
-
-* Click **Custom Rule Builder** to create your own custom scan conditions.
-* **146 Technical & Fundamental Fields**: Filter by Moving Averages, RSI, MACD, ADX, ATR, Bollinger Bands, Delivery, Volatility, Supertrend, and Pivot Levels.
-* **Column-to-Column Comparisons**: Compare any field directly against another column (e.g. `Price > SMA 20`, `SMA 50 > SMA 200`).
-* **Flexible Operators**: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between (Range)`, and `contains`.
-* **Match Logic**: Toggle between `All Rules (AND)` and `Any Rule (OR)`.
-* **Save Custom Presets**: Click **Save as Preset** to store your custom rules in local storage with a custom name for instant 1-click access anytime.
-* **Strategy Explanation Modal**: Click the **(i)** icon on any preset to open an interactive modal explaining the rationale, exact trigger criteria, and why it works.
-
-## Changing the scheduled run times
-
-The two run times (default **09:30** and **11:30**) live in `config/settings.json`:
-
-```json
-"schedule": { "run_times": ["09:30", "11:30"], "timezone": "Asia/Kolkata", "task_name": "StockMonitor-DailyUpdate" }
-```
-
-Set them in the **Scheduled run times** panel of the UI and click **Save times**. The app
-**automatically syncs the new times with Windows Task Scheduler immediately** — no manual script
-execution required. Times are validated as 24-hour `HH:MM`; exactly two are required.
-
-## Windows Task Scheduler setup
-
-**Recommended (scripted):**
-
+To configure manually via PowerShell:
 ```powershell
-cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
 ```
 
-This reads `config/settings.json` and registers a task (default name `StockMonitor-DailyUpdate`)
-with **weekly triggers for Monday through Friday (weekdays only)** at each configured time,
-running `powershell.exe -File scripts\run_scheduled.ps1` in the active user session.
-Useful switches: `-Sync` (only update when times changed), `-Unregister` (remove the task),
-`-TaskName <name>`.
-
-**Manual (Task Scheduler GUI)** — if you prefer to create it by hand:
-
-| Setting | Value |
-| --- | --- |
-| General → Name | `StockMonitor-DailyUpdate` |
-| General → Run only when user is logged on | Selected (required for interactive window popup) |
-| Triggers | Weekly on **Mon, Tue, Wed, Thu, Fri** at `09:30`, and second trigger at `11:30` |
-| Action → Program/script | `powershell.exe` |
-| Action → Add arguments | `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\...\Daily Updater\scripts\run_scheduled.ps1"` |
-| Action → Start in | `C:\...\Daily Updater` |
-| Settings | *Run task as soon as possible after a scheduled start is missed* |
-
-`scripts\run_scheduled.bat` is a drop-in alternative if you would rather point the action at a
-`.bat` file.
-
-**What a run does:**
-
-1. Locates the interpreter (`.venv\Scripts\python.exe`, then `venv\`, then `python.exe` on `PATH`).
-2. Runs `scheduled_run.py`, which checks the weekday guard, consumes queued additions, fetches every
-   ticker in both portfolios, computes EMAs, applies priority sorting, and rewrites `data/snapshot.json`.
-3. Bumps `data/status.json` so any open desktop window refreshes itself via SSE.
-4. **Pops up a reminder window on top** — on success, launches `show_window.py` which brings the app
-   window on top of all currently running applications so you don't miss the update. If the window
-   is already open, it is restored and brought to the front.
-5. Re-syncs the task triggers with `config/settings.json`.
-6. Logs the outcome to `logs/scheduler.log` (plus a runner transcript in
-   `logs/scheduled_run_console.log`).
-
-Exit codes: `0` success, `1` every ticker failed, `2` unexpected fatal error.
-
-Test it any time without waiting for the clock:
-
+### Unregistering or Disabling the Task
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_scheduled.ps1
-```
-
-## Stopping the scheduled task
-
-If you no longer want the twice-daily scheduled runs (and the reminder popup), you can **disable** or
-**remove** the Windows Task Scheduler task.
-
-### Remove the task entirely (scripted)
-
-```powershell
-cd "C:\Users\hmaru\Downloads\Personal\Project\Daily Updater"
+# Remove the task completely
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\register_task.ps1 -Unregister
-```
 
-This deletes the `StockMonitor-DailyUpdate` task from Task Scheduler. You can re-create it later by
-running `register_task.ps1` again without `-Unregister`.
-
-### Disable the task temporarily (GUI)
-
-1. Press **Win + R**, type `taskschd.msc`, press Enter.
-2. In the left pane navigate to **Task Scheduler Library**.
-3. Find the task named **StockMonitor-DailyUpdate** in the list.
-4. Right-click it → **Disable**.
-
-The task stays registered but will not fire until you right-click → **Enable** it again.
-
-### Disable the task temporarily (PowerShell)
-
-```powershell
-# Disable (stop all future runs)
+# Temporarily disable the task
 Disable-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
 
-# Re-enable when you want it back
+# Re-enable the task
 Enable-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
 ```
 
-### Skip a single run
+### Scheduled Execution Workflow
+1. Runs `scheduled_run.py` at the scheduled times.
+2. Checks the weekday guard (Mon–Fri only).
+3. Consumes any newly added tickers from `data/pending_additions.json`.
+4. Fetches market prices, recomputes EMAs, and updates `data/snapshot.json`.
+5. Increments `data/status.json`, triggering an instant SSE refresh on any open desktop window.
+6. Launches `show_window.py` to pop the window to the foreground as a visual alert.
 
-If you just want to stop the **currently running** instance (or prevent the next imminent one):
+---
 
-```powershell
-# Stop a run that is executing right now
-Stop-ScheduledTask -TaskName "StockMonitor-DailyUpdate"
-```
+## Configuration Reference
 
-The task remains enabled and will fire again at the next configured time.
+Settings are stored in `config/settings.json` (see `config.template.json`):
 
-### Check current status
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `schedule.run_times` | `["09:30", "11:30"]` | Daily run times (24-hour `HH:MM`) |
+| `schedule.timezone` | `Asia/Kolkata` | Market timezone reference |
+| `schedule.task_name` | `StockMonitor-DailyUpdate` | Windows Task Scheduler task name |
+| `data.default_exchange_suffix` | `.NS` | Default exchange suffix for bare symbols |
+| `data.history_period` | `10y` | Historical period fetched for EMA calculation |
+| `data.ema_periods` | `[9, 21, 50, 100, 200]` | Tracked EMA periods |
+| `data.max_workers` | `4` | Concurrency for background downloads |
+| `data.retries` / `data.retry_backoff_seconds` | `2` / `1.5` | Retry attempts and backoff duration |
+| `ui.status_poll_seconds` | `5` | Fallback polling interval if SSE disconnects |
+| `ui.price_decimals` | `2` | Number of decimal places rendered in tables |
 
-```powershell
-Get-ScheduledTask -TaskName "StockMonitor-DailyUpdate" | Select-Object TaskName, State
-```
+---
 
-| State | Meaning |
-| --- | --- |
-| `Ready` | Enabled, waiting for the next trigger |
-| `Running` | Currently executing |
-| `Disabled` | Will not fire until re-enabled |
+## Error Handling & Logging
 
-## How the scheduler notifies the app
+All events and anomalies are logged to rotating files in `logs/`:
 
-The scheduled task runs in its **own process**, so it signals the app through a shared file:
+| Log File | Description |
+| :--- | :--- |
+| `logs/app.log` | Flask web server logs, API requests, and UI operations. |
+| `logs/scheduler.log` | Summary records of scheduled runs, processed tickers, and network errors. |
+| `logs/ticker_additions.log` | Audit trail of all ticker additions made through the UI. |
+| `logs/scheduled_run_console.log` | Full console stdout/stderr from Task Scheduler runs. |
 
-* Every successful refresh writes `data/status.json` with an incremented `version`, a timestamp, the
-  source (`scheduled`, `manual`, `ticker-added`, `ticker-removed`) and a summary.
-* The desktop window holds an **SSE** connection to `GET /api/stream`. The Flask app watches the
-  status file and pushes an `update` event as soon as the version changes.
-* On that event the page fetches `GET /api/tables` and swaps in freshly rendered tables — no reload
-  and no manual click. A toast confirms *"Scheduled run finished — 6/6 tickers refreshed"*.
-* If `EventSource` is unavailable or the stream closes permanently, the page falls back to polling
-  `GET /api/status` every `ui.status_poll_seconds`. The indicator in the footer shows which mode is
-  active (`live` / `polling for updates`).
+---
 
-The same mechanism drives the **Refresh now** button, ticker additions and removals, so every window
-stays in sync.
+## HTTP API Reference
 
-## EMA and colour logic
+The Flask backend provides clean REST endpoints and real-time SSE streaming:
 
-* EMA uses the standard smoothed formula, `close.ewm(span=n, adjust=False)`, matching charting
-  platforms.
-* **Daily** values come from the daily close series; **weekly** values from Friday-anchored weekly
-  candles resampled from the same history. The current (unfinished) day and week are included so the
-  numbers are "live".
-* The current price is the live quote when available, otherwise the most recent close (noted in the
-  row's tooltip). When a live quote exists, the forming daily candle's close is updated with it so
-  the intraday EMA matches what a chart shows.
-* **Signal Logic**:
-  * **`SELL`** (red text): Current price is **below** the daily 200 EMA.
-  * **`HOLD`** (green text): Current price is **above** the daily 200 EMA (or 200 EMA data is not available).
-* **Priority Sorting**:
-  * Tickers are sorted by the highest daily EMA breached:
-    1. **Priority 0 (Highest)**: Price below daily **200** EMA
-    2. **Priority 1**: Price below daily **100** EMA
-    3. **Priority 2**: Price below daily **50** EMA
-    4. **Priority 3**: Price below daily **21** EMA
-    5. **Priority 4**: Price below daily **9** EMA
-    6. **Priority 5 (Lowest)**: Price above all daily EMAs
-  * Tickers sharing the same priority level are sorted **alphabetically**.
-* **Display rule** per EMA and timeframe:
+| Method & Path | Description |
+| :--- | :--- |
+| `GET /` | Serves the single-page React desktop application. |
+| `GET /api/tables` | Returns rendered portfolio tables HTML and summary stats. |
+| `GET /api/data` | Returns raw `snapshot.json` contents. |
+| `POST /api/refresh` | Triggers immediate re-fetch and EMA recomputation for all portfolios. |
+| `POST /api/tickers` | Validates, fetches, and appends a new ticker `{portfolio, symbol}`. |
+| `DELETE /api/tickers` | Removes a ticker from a portfolio `{portfolio, symbol}`. |
+| `GET` / `POST /api/schedule` | Reads or updates scheduled run times. |
+| `GET /api/status` | Returns current data version counter and last-run summary. |
+| `GET /api/stream` | Server-Sent Events (SSE) feed notifying clients of version updates. |
+| `GET /api/stock-info?symbol=...` | Fetches live market price and official company name for a single ticker. |
+| `POST /api/stock-quotes` | Batch fetches live market prices and timestamps for multiple tickers. |
+| `GET /api/stock-status` | Retrieves all saved stock status and scenario analysis entries. |
+| `POST /api/stock-status` | Saves a new stock status/scenario analysis entry. |
+| `PUT /api/stock-status/<id>` | Updates an existing stock status entry. |
+| `DELETE /api/stock-status/<id>` | Deletes a stock status entry. |
+| `GET /api/screener/data?date=...` | Returns cached screener records and available historical dates. |
+| `POST /api/screener/fetch` | Triggers on-demand screener fetch `{nonce, date, search, per_page}`. |
+| `GET /api/screener/detect-nonce` | Auto-detects and returns active `X-WP-Nonce` from the screener site. |
+| `POST /api/screener/sync-history` | Synchronizes available past trading dates into local disk cache. |
+| `GET /api/screener/multi-day-analysis` | Computes multi-day sequence metrics and returns ranked predictive setups. |
 
-  | Condition | Cell content |
-  | --- | --- |
-  | price **below** the EMA | **D:** or **W:** label followed by the value, in **red** |
-  | price **above** the EMA | blank (the **D:** / **W:** label is still shown for alignment) |
-  | data **unavailable** | **D:** or **W:** followed by **`N/A`** in muted grey |
+---
 
-  Each EMA column stacks the daily value on top (**D:**) and the weekly value below (**W:**).
-  Example: if CARTRADE is below its daily 9 EMA but above its weekly 9 EMA, the "9 EMA" cell shows
-  `D: 245.30` in red on the first line, with the second line (`W:`) blank.
-* **N/A for Missing Data**: If an individual EMA cannot be computed due to insufficient historical bars
-  (e.g., 200-week EMA on a stock listed 1 year ago), that specific timeframe renders as `N/A` in muted grey.
-  All other EMAs for that stock continue to compute and display normally without throwing warning flags.
-* **NSE / BSE Auto-Switch**: If a ticker on its primary exchange has thin historical data (< 400 daily bars,
-  which is ~200 EMA × 2), the system automatically attempts to fetch history from the alternate exchange
-  (`.NS` ↔ `.BO`). If the alternate exchange provides more bars, it is used automatically to compute the EMAs
-  accurately.
+## Known Limitations & Planned Features
 
-## Error handling and logging
+### Limitations
+* **Local Single-User Architecture**: Built for local desktop use; does not require authentication.
+* **Public Data Endpoints**: Market data relies on Yahoo Finance (`yfinance`) and Prime Screener; subject to intermittent network latency or rate-limiting.
+* **Active Machine Requirement**: Scheduled runs execute via Windows Task Scheduler; machine must be active or awake.
 
-| Situation | Behaviour |
-| --- | --- |
-| Invalid/unknown/delisted symbol | Fetch retried (`data.retries`, exponential backoff), then the ticker is skipped, the row shows *"Data unavailable — …"*, and it is listed in the red **Fetch problems** panel. Other tickers continue to process. |
-| Ticker added through the UI that cannot be fetched | Rejected with an explanation; nothing is written to the portfolio. |
-| Malformed ticker input | Rejected by format validation before any network call. |
-| Duplicate ticker | Rejected with a message naming the portfolio. |
-| Invalid schedule time | Rejected; `config/settings.json` is left untouched. |
-| Corrupt `settings.json` / `portfolios.json` / `snapshot.json` | Logged, moved aside as `*.corrupt`, and regenerated from defaults. |
-| Network outage during a scheduled run | Every failure is logged; exit code `1` if nothing could be fetched, so Task Scheduler shows the failure. |
-| Live quote unavailable | Falls back to the latest close and notes it on the row. |
-| Overlapping refreshes | A second concurrent refresh returns HTTP 409 instead of duplicating work. |
-
-Log files (rotating, 5 backups):
-
-| File | Contents |
-| --- | --- |
-| `logs/app.log` | Web app activity: refreshes, additions/removals, schedule edits, errors |
-| `logs/scheduler.log` | One block per scheduled run: tickers picked up, per-ticker failures, totals |
-| `logs/ticker_additions.log` | Audit trail of every ticker added through the UI |
-| `logs/scheduled_run_console.log` | Transcript written by the PowerShell runner |
-
-## Configuration reference
-
-`config/settings.json` (see `config.template.json`):
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `schedule.run_times` | `["09:30", "11:30"]` | The two daily run times, editable from the UI |
-| `schedule.timezone` | `Asia/Kolkata` | Informational label for the market timezone |
-| `schedule.task_name` | `StockMonitor-DailyUpdate` | Windows scheduled task name |
-| `data.default_exchange_suffix` | `.NS` | Suffix applied to symbols entered without one |
-| `data.history_period` | `10y` | History downloaded per ticker (needs ≥ 200 weeks for the 200-week EMA) |
-| `data.ema_periods` | `[9, 21, 50, 100, 200]` | EMA periods; adding one adds a table column |
-| `data.max_workers` | `4` | Parallel ticker downloads |
-| `data.retries` / `data.retry_backoff_seconds` | `2` / `1.5` | Retry policy per ticker |
-| `ui.status_poll_seconds` | `5` | Poll interval used when SSE is unavailable |
-| `ui.price_decimals` | `2` | Decimal places for prices and EMAs |
-
-The config/data/log locations can be relocated with the `STOCKMON_CONFIG_DIR`, `STOCKMON_DATA_DIR`
-and `STOCKMON_LOG_DIR` environment variables (both processes must see the same values).
-
-## HTTP API
-
-| Method &amp; path | Purpose |
-| --- | --- |
-| `GET /` | The UI |
-| `GET /api/tables` | Freshly rendered table HTML + stats + errors (no re-fetch) |
-| `GET /api/data` | Raw `snapshot.json` |
-| `POST /api/refresh` | Re-fetch everything now |
-| `POST /api/tickers` | `{portfolio, symbol}` — validate, fetch immediately, add |
-| `DELETE /api/tickers` | `{portfolio, symbol}` — remove |
-| `GET` / `POST /api/schedule` | Read / write the two run times |
-| `GET /api/status` | Current data version and last-run summary |
-| `GET /api/stream` | Server-Sent Events feed of status changes |
-| `GET /api/stock-info?symbol=...` | Fetch live stock price and company name for single ticker |
-| `POST /api/stock-quotes` | Batch fetch live stock quotes and timestamps for multiple tickers |
-| `GET /api/stock-status` | Get all saved stock status and scenario analysis entries |
-| `POST /api/stock-status` | Add a new stock status / scenario entry |
-| `PUT /api/stock-status/<id>` | Update an existing stock status entry |
-| `DELETE /api/stock-status/<id>` | Delete a stock status entry |
-| `GET /api/screener/data?date=...` | Get cached screener dataset and list of locally saved dates |
-| `POST /api/screener/fetch` | Execute manual screener fetch with `{nonce, date, search, per_page}` |
-| `GET /api/screener/detect-nonce` | Auto-detect current nonce from screener site |
-
-## Known limitations
-
-* **Live data only.** No historical or past-day view, no charts, no snapshot archive — by design.
-* Data comes from the free Yahoo Finance endpoints via `yfinance`: quotes can be delayed, rate
-  limited, or occasionally unavailable, and coverage of thinly traded BSE scrips is patchy.
-* Weekly candles are resampled from daily bars (Friday-anchored). They match standard weekly charts
-  but may differ marginally from a broker's own weekly series around holidays.
-* EMAs are only as good as the available history: newly listed stocks cannot produce a meaningful
-  200-week EMA, and such values are omitted or flagged.
-* The Flask development server is used behind the pywebview desktop window — this is a **local,
-  single-user tool**. It has no authentication and should not be exposed beyond `127.0.0.1`.
-* The scheduler is Windows Task Scheduler; the app itself runs no internal timer, so scheduled
-  refreshes require the machine to be on.
-* Portfolio names are fixed to `BAPA` and `MADI` in this version.
-
-## Planned features
-
-This is an early version, intentionally modular so features can be layered on:
-
-* Per-ticker notes, quantity/average price and simple P&amp;L columns.
-* Configurable portfolios (add, rename or remove portfolios from the UI).
-* Alerts — desktop or email notification when a price crosses a watched EMA.
-* Sorting and filtering (e.g. "show only tickers below the 200 EMA").
-* Additional indicators (RSI, ATR, volume averages) and monthly timeframe support.
-* Optional historical snapshot archive and a "what changed since the last run" diff view.
-* Pluggable data providers (NSE official API, broker APIs) as a fallback for `yfinance`.
-* Export to CSV/Excel.
-* Automated test suite with recorded `yfinance` fixtures.
+### Roadmap
+* [ ] Alerts: Native desktop toast or notification sound when prices cross watched EMAs.
+* [ ] Direct Broker Integration: Pluggable fallback data providers (e.g. Zerodha Kite, Upstox).
+* [ ] Portfolio Customization: Support creating, renaming, and deleting custom portfolios from the UI.
+* [ ] Data Export: One-click export to CSV/Excel for screener and portfolio tables.

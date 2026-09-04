@@ -961,6 +961,79 @@ export const STRATEGY_PRESETS = [
       { field: 'volume_ratio_20', op: '>=', value: 2.0 },
       { field: 'close_near_high_pct', op: '>=', value: 80 }
     ]
+  },
+  {
+    id: 'predictive_silent_accumulation',
+    name: '📦 Silent Accumulation (Upcoming Pop)',
+    badge: 'Pre-Blast',
+    tagline: 'Institutional accumulation in flat base with rising delivery',
+    category: 'Multi-Day Predictive',
+    color: '#059669',
+    description:
+      'Detects stocks where institutions have quietly accumulated shares over multiple consecutive sessions while price remains flat. When accumulation completes, price tends to stage a violent upward expansion.',
+    criteriaExplanation: [
+      'Accumulation Score >= 65/100',
+      'Delivery % >= 35%',
+      'Multi-Day Window Price Change <= 5.0% (flat base / no premature runup)'
+    ],
+    rules: [
+      { field: 'predictive_setups', op: 'contains', value: 'silent_accumulation' }
+    ]
+  },
+  {
+    id: 'predictive_fresh_flip',
+    name: '⚡ Fresh Signal Ignition (Day 0–1)',
+    badge: 'Fresh Trigger',
+    tagline: 'Supertrend or 20 SMA flipped bullish in last 24-48 hours + RVOL >= 1.2x',
+    category: 'Multi-Day Predictive',
+    color: '#2563eb',
+    description:
+      'Filters out stale or exhausted trends. Catches stocks exactly on Day 0 or Day 1 of a fresh trend transition, maximizing follow-through probability.',
+    criteriaExplanation: [
+      'Supertrend Flip Days <= 1 OR 20 SMA Cross Days <= 1 (triggered today or yesterday)',
+      'Volume Ratio (RVOL) >= 1.2x',
+      'Change % > 0%'
+    ],
+    rules: [
+      { field: 'predictive_setups', op: 'contains', value: 'fresh_signal_flip' }
+    ]
+  },
+  {
+    id: 'predictive_vcp_breakout',
+    name: '🎯 Multi-Day VCP Breakout',
+    badge: 'Coil Release',
+    tagline: 'Multi-day range contraction (<=6%) + fresh volume expansion (>=1.4x)',
+    category: 'Multi-Day Predictive',
+    color: '#7c3aed',
+    description:
+      'Multi-day Volatility Contraction Pattern (VCP). Identifies stocks that compressed into a tight box over multiple sessions and are now exploding out on elevated volume and strong closing range.',
+    criteriaExplanation: [
+      'VCP Compression Ratio <= 0.65 OR 5-Session Range <= 6.0%',
+      'Volume Ratio (RVOL) >= 1.4x',
+      'Change % >= +1.5%',
+      'Close Position in Range >= 75%'
+    ],
+    rules: [
+      { field: 'predictive_setups', op: 'contains', value: 'vcp_breakout' }
+    ]
+  },
+  {
+    id: 'predictive_momentum_staircase',
+    name: '📈 3+ Day Higher Lows Staircase',
+    badge: 'Staircase',
+    tagline: '3 or more consecutive higher lows with steady accumulation',
+    category: 'Multi-Day Predictive',
+    color: '#ea580c',
+    description:
+      'Tracks institutional staircase buying where buyers consistently defend and step in at higher prices each consecutive day, forming an unbroken ladder of higher lows.',
+    criteriaExplanation: [
+      'Consecutive Higher Lows >= 3 sessions',
+      'Change % >= +0.5%',
+      'Close Position in Range >= 65%'
+    ],
+    rules: [
+      { field: 'predictive_setups', op: 'contains', value: 'momentum_staircase' }
+    ]
   }
 ];
 
@@ -971,6 +1044,15 @@ export function evaluateItemMatchesRule(item, rule) {
 
   const itemVal = item[field];
   if (itemVal === null || itemVal === undefined) return false;
+
+  // Support array contains (e.g. predictive_setups array)
+  if (Array.isArray(itemVal)) {
+    if (op === 'contains' || op === '==') {
+      const targetStr = String(value || '').toLowerCase();
+      return itemVal.some((el) => String(el).toLowerCase() === targetStr || String(el).toLowerCase().includes(targetStr));
+    }
+    return false;
+  }
 
   // Compare against another column field if compareField is specified
   if (compareField) {

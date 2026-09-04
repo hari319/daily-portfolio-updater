@@ -69,8 +69,12 @@ export default function ScreenerTab({ showToast }) {
   const [selectedDate, setSelectedDate] = useState(''); // '' = Today / Latest
   const [isFetching, setIsFetching] = useState(false);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [errorModal, setErrorModal] = useState(null); // { title, message }
+  const [nonceInfo, setNonceInfo] = useState(null);
+  const [showManualNonce, setShowManualNonce] = useState(false);
+  const [multiDaySummary, setMultiDaySummary] = useState(null);
 
   // Screener Data & Saved Dates
   const [screenerData, setScreenerData] = useState(null);
@@ -102,6 +106,35 @@ export default function ScreenerTab({ showToast }) {
   const [colSearch, setColSearch] = useState('');
   const colPickerRef = useRef(null);
 
+  // Helper to merge multi-day analysis metrics into screener data items
+  const enrichWithMultiDayAnalysis = async (force = false) => {
+    try {
+      const res = await api.fetchMultiDayAnalysis(11, force);
+      if (res && res.ok) {
+        if (res.setups_summary) {
+          setMultiDaySummary(res.setups_summary);
+        }
+        if (Array.isArray(res.items)) {
+          const enrichedMap = new Map();
+          res.items.forEach((it) => {
+            if (it.symbol) enrichedMap.set(it.symbol, it);
+          });
+
+          setScreenerData((prev) => {
+            if (!prev || !Array.isArray(prev.items)) return prev;
+            const updatedItems = prev.items.map((item) => {
+              const extra = enrichedMap.get(item.symbol);
+              return extra ? { ...item, ...extra } : item;
+            });
+            return { ...prev, items: updatedItems };
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Multi-day sequence analysis non-critical error:', err);
+    }
+  };
+
   // Available trading dates (computed or from API response)
   const last11Days = useMemo(() => {
     if (screenerData && Array.isArray(screenerData.dates) && screenerData.dates.length > 0) {
@@ -124,6 +157,13 @@ export default function ScreenerTab({ showToast }) {
         }
         if (res && res.nonce_info) {
           setNonceInfo(res.nonce_info);
+        }
+        if (res && res.multi_day_summary) {
+          setMultiDaySummary(res.multi_day_summary);
+        }
+        // If we have saved dates but no multi-day metrics attached, run analysis
+        if (res && res.saved_dates && res.saved_dates.length >= 2 && !res.multi_day_summary) {
+          enrichWithMultiDayAnalysis();
         }
       } catch (err) {
         console.warn('No initial cached screener data:', err);
@@ -178,9 +218,6 @@ export default function ScreenerTab({ showToast }) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showColPicker]);
-
-  const [nonceInfo, setNonceInfo] = useState(null);
-  const [showManualNonce, setShowManualNonce] = useState(false);
 
   // Auto-detect Nonce helper
   const handleAutoDetectNonce = async () => {
@@ -255,6 +292,8 @@ export default function ScreenerTab({ showToast }) {
         if (showToast) {
           showToast(res.message || 'Screener data loaded successfully!', false);
         }
+        // Run multi-day trajectory enrichment
+        enrichWithMultiDayAnalysis();
       }
     } catch (err) {
       console.error('Screener fetch error:', err);
@@ -267,6 +306,35 @@ export default function ScreenerTab({ showToast }) {
       setShowManualNonce(true);
     } finally {
       setIsFetching(false);
+    }
+  };
+
+  // Trigger Sync of Available Historical Dates (powers multi-day trajectory analysis)
+  const handleSyncHistoricalDates = async () => {
+    setIsSyncingHistory(true);
+    try {
+      const res = await api.syncScreenerHistory(11);
+      if (res && res.available_saved_dates) {
+        setSavedDates(res.available_saved_dates);
+      }
+      await enrichWithMultiDayAnalysis();
+      if (showToast) {
+        const count = (res.synced_dates || []).length;
+        showToast(
+          count > 0
+            ? `Successfully synced ${count} historical dates! Multi-day trajectory analysis updated.`
+            : `All ${res.total_cached || 0} available dates are already cached and analyzed!`,
+          false
+        );
+      }
+    } catch (err) {
+      console.error('History sync error:', err);
+      setErrorModal({
+        title: 'Sync History Failed',
+        message: err.message || 'Could not sync historical screener dates.',
+      });
+    } finally {
+      setIsSyncingHistory(false);
     }
   };
 
@@ -455,7 +523,48 @@ export default function ScreenerTab({ showToast }) {
     }
 
     const meta = columnMap.get(colKey);
-    const format = meta?.format || 'text';
+    const format = meta?.format;
+
+    if (format === 'setups') {
+      const setups = Array.isArray(val) ? val : [];
+      if (setups.length === 0) return <span className="text-muted">—</span>;
+      return (
+        <div className="d-flex flex-wrap gap-1">
+          {setups.map((s) => {
+            let label = s;
+            let bgClass = 'bg-secondary-subtle text-secondary';
+            if (s === 'silent_accumulation') {
+              label = '📦 Silent Acc';
+              bgClass = 'bg-success-subtle text-success border-success-subtle';
+            } else if (s === 'fresh_signal_flip') {
+              label = '⚡ Fresh Flip';
+              bgClass = 'bg-primary-subtle text-primary border-primary-subtle';
+            } else if (s === 'vcp_breakout') {
+              label = '🎯 VCP Breakout';
+              bgClass = 'bg-info-subtle text-info-emphasis border-info-subtle';
+            } else if (s === 'momentum_staircase') {
+              label = '📈 Staircase';
+              bgClass = 'bg-warning-subtle text-warning-emphasis border-warning-subtle';
+            }
+            return (
+              <span key={s} className={`badge ${bgClass} border px-1.5 py-0.5 fw-semibold`} style={{ fontSize: '10px' }}>
+                {label}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (format === 'score') {
+      const num = Number(val);
+      if (isNaN(num)) return val;
+      let badgeClass = 'bg-secondary-subtle text-secondary border';
+      if (num >= 80) badgeClass = 'bg-success-subtle text-success border border-success-subtle';
+      else if (num >= 65) badgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
+      else if (num >= 50) badgeClass = 'bg-warning-subtle text-warning-emphasis border border-warning-subtle';
+      return <span className={`badge ${badgeClass} px-2 py-1 fw-bold`}>{num}/100</span>;
+    }
 
     if (format === 'currency') {
       const num = Number(val);
@@ -760,6 +869,10 @@ export default function ScreenerTab({ showToast }) {
           onSaveCustomPreset={handleSaveCustomPreset}
           onDeleteCustomPreset={handleDeleteCustomPreset}
           onLoadCustomPreset={handleLoadCustomPreset}
+          onSyncHistory={handleSyncHistoricalDates}
+          isSyncingHistory={isSyncingHistory}
+          savedDatesCount={savedDates.length}
+          multiDaySummary={multiDaySummary}
         />
       )}
 

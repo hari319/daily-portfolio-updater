@@ -34,6 +34,10 @@ export default function ScreenerFilterPanel({
   onSaveCustomPreset,
   onDeleteCustomPreset,
   onLoadCustomPreset,
+  onSyncHistory,
+  isSyncingHistory = false,
+  savedDatesCount = 0,
+  multiDaySummary = null,
 }) {
   const [showCustomBuilder, setShowCustomBuilder] = useState(false);
   const [selectedStrategyInfo, setSelectedStrategyInfo] = useState(null);
@@ -98,6 +102,19 @@ export default function ScreenerFilterPanel({
           </div>
 
           <div className="d-flex align-items-center gap-2">
+            {onSyncHistory && (
+              <button
+                type="button"
+                className="btn btn-xs btn-outline-primary d-flex align-items-center gap-1"
+                onClick={onSyncHistory}
+                disabled={isSyncingHistory}
+                title="Download available historical dates to power multi-day predictive analysis"
+              >
+                <Sparkles size={13} className={isSyncingHistory ? 'animate-spin' : ''} />
+                <span>{isSyncingHistory ? 'Syncing Dates...' : `Sync History (${savedDatesCount} Saved)`}</span>
+              </button>
+            )}
+
             <button
               type="button"
               className={`btn btn-xs ${showCustomBuilder ? 'btn-primary' : 'btn-outline-secondary'} d-flex align-items-center gap-1`}
@@ -124,8 +141,65 @@ export default function ScreenerFilterPanel({
           </div>
         </div>
 
-        {/* Section 1: Ultra High-Conviction Explosive 1-2 Day Setups */}
+        {/* Section 1: Multi-Day Predictive Trajectory (Upcoming Movers) */}
         <div className="mb-2">
+          <div className="d-flex align-items-center justify-content-between gap-1 mb-1">
+            <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-0.5 fw-bold" style={{ fontSize: '11px' }}>
+              🔮 Multi-Day Predictive Trajectory (Upcoming 1–3 Day Movers)
+            </span>
+            <span className="small text-muted fst-italic" style={{ fontSize: '11px' }}>
+              Powered by chronological {savedDatesCount}-day multi-date analysis
+            </span>
+          </div>
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            {STRATEGY_PRESETS.filter((s) =>
+              ['predictive_silent_accumulation', 'predictive_fresh_flip', 'predictive_vcp_breakout', 'predictive_momentum_staircase'].includes(s.id)
+            ).map((strat) => {
+              const isActive = activePreset === strat.id;
+              let setupKey = null;
+              if (strat.id === 'predictive_silent_accumulation') setupKey = 'silent_accumulation';
+              else if (strat.id === 'predictive_fresh_flip') setupKey = 'fresh_signal_flip';
+              else if (strat.id === 'predictive_vcp_breakout') setupKey = 'vcp_breakout';
+              else if (strat.id === 'predictive_momentum_staircase') setupKey = 'momentum_staircase';
+              const count = multiDaySummary && setupKey ? multiDaySummary[setupKey] : null;
+
+              return (
+                <div key={strat.id} className="btn-group btn-group-sm">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${isActive ? 'btn-success text-white shadow-sm' : 'btn-outline-success bg-white text-success'}`}
+                    onClick={() => onSelectPreset(strat.id)}
+                    title={strat.tagline}
+                  >
+                    <span className="fw-bold">{strat.name}</span>
+                    {count !== null && count !== undefined && (
+                      <span
+                        className={`badge ${isActive ? 'bg-white text-success' : 'bg-success text-white'} ms-1.5`}
+                        style={{ fontSize: '10px' }}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${isActive ? 'btn-success border-start border-white-50' : 'btn-outline-success bg-white text-muted'}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStrategyInfo(strat);
+                    }}
+                    title="View strategy explanation and criteria"
+                  >
+                    <Info size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 2: Ultra High-Conviction Explosive 1-2 Day Setups */}
+        <div className="mb-2 pt-2 border-top">
           <div className="d-flex align-items-center gap-1 mb-1">
             <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-0.5 fw-bold" style={{ fontSize: '11px' }}>
               🔥 Explosive 1–2 Day Setups (Top 15–30 Candidates)
@@ -163,7 +237,7 @@ export default function ScreenerFilterPanel({
           </div>
         </div>
 
-        {/* Section 2: Classical Swing, Momentum & Long-Term Strategies */}
+        {/* Section 3: Classical Swing, Momentum & Long-Term Strategies */}
         <div className="pt-2 border-top">
           <div className="d-flex align-items-center gap-1 mb-1">
             <span className="badge bg-secondary-subtle text-secondary border px-2 py-0.5 fw-semibold" style={{ fontSize: '11px' }}>
@@ -172,7 +246,17 @@ export default function ScreenerFilterPanel({
           </div>
           <div className="d-flex flex-wrap gap-2 align-items-center">
             {STRATEGY_PRESETS.filter(
-              (s) => !['institutional_blastoff', 'vcp_squeeze', 'blue_sky_ath', 'consensus_8_8'].includes(s.id)
+              (s) =>
+                ![
+                  'predictive_silent_accumulation',
+                  'predictive_fresh_flip',
+                  'predictive_vcp_breakout',
+                  'predictive_momentum_staircase',
+                  'institutional_blastoff',
+                  'vcp_squeeze',
+                  'blue_sky_ath',
+                  'consensus_8_8',
+                ].includes(s.id)
             ).map((strat) => {
               const isActive = activePreset === strat.id;
               return (

@@ -17,7 +17,8 @@ export const SCREENER_CATEGORIES = [
   "Price Action",
   "Trend",
   "Setup",
-  "Pivot Levels"
+  "Pivot Levels",
+  "Multi-Day Trajectory"
 ];
 
 export const SCREENER_COLUMNS = [
@@ -1098,12 +1099,77 @@ export const SCREENER_COLUMNS = [
     "category": "Pivot Levels",
     "defaultVisible": false,
     "format": "currency"
+  },
+  {
+    "key": "accumulation_score",
+    "label": "Accumulation Score (0-100)",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": true,
+    "format": "score"
+  },
+  {
+    "key": "consecutive_rising_delivery",
+    "label": "Consecutive Delivery Up",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "integer"
+  },
+  {
+    "key": "delivery_growth_3d_pct",
+    "label": "3D Delivery Growth %",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "percent"
+  },
+  {
+    "key": "supertrend_flip_days",
+    "label": "Supertrend Flip (Days Ago)",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "integer"
+  },
+  {
+    "key": "ma20_cross_days",
+    "label": "20 SMA Cross (Days Ago)",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "integer"
+  },
+  {
+    "key": "consecutive_higher_lows",
+    "label": "Consecutive Higher Lows",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "integer"
+  },
+  {
+    "key": "vcp_compression_ratio",
+    "label": "VCP Compression Ratio",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "number"
+  },
+  {
+    "key": "window_price_change_pct",
+    "label": "Multi-Day Window Return %",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": false,
+    "format": "percent"
+  },
+  {
+    "key": "predictive_setups",
+    "label": "Predictive Setups",
+    "category": "Multi-Day Trajectory",
+    "defaultVisible": true,
+    "format": "setups"
   }
 ];
 
 export const DEFAULT_VISIBLE_COLUMNS = [
   'pct_change',
   'signal',
+  'accumulation_score',
+  'predictive_setups',
   'volume',
   'rsi_14',
   'macd',
